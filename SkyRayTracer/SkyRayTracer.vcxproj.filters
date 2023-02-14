@@ -13,5 +13,39 @@
       <UniqueIdentifier>{67DA6AB6-F800-4c08-8B7A-83BB121AAD01}</UniqueIdentifier>
       <Extensions>rc;ico;cur;bmp;dlg;rc2;rct;bin;rgs;gif;jpg;jpeg;jpe;resx;tiff;tif;png;wav;mfcribbon-ms</Extensions>
     </Filter>
+    <Filter Include="源文件\Objects">
+      <UniqueIdentifier>{defdf8d6-bd19-4f17-ab40-e8e906b4f101}</UniqueIdentifier>
+    </Filter>
+    <Filter Include="源文件\Math&amp;Constants">
+      <UniqueIdentifier>{b588a30e-80b1-4ae6-9397-a1b37536c183}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClCompile Include="main.cpp">
+      <Filter>源文件</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="draw.h">
+      <Filter>源文件</Filter>
+    </ClInclude>
+    <ClInclude Include="ray.h">
+      <Filter>源文件</Filter>
+    </ClInclude>
+    <ClInclude Include="hittable.h">
+      <Filter>源文件\Objects</Filter>
+    </ClInclude>
+    <ClInclude Include="sphere.h">
+      <Filter>源文件\Objects</Filter>
+    </ClInclude>
+    <ClInclude Include="hittableList.h">
+      <Filter>源文件</Filter>
+    </ClInclude>
+    <ClInclude Include="math.h">
+      <Filter>源文件\Math&amp;Constants</Filter>
+    </ClInclude>
+    <ClInclude Include="vec3.h">
+      <Filter>源文件\Math&amp;Constants</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
