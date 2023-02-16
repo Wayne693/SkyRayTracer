@@ -1,6 +1,7 @@
 #pragma once
 #include <cmath>
 #include <iostream>
+#include "math.h"
 
 class vec3
 {
@@ -68,7 +69,15 @@ private:
 	float v[3];
 
 public:
+	inline static vec3 random()
+	{
+		return vec3(Random(), Random(), Random());
+	}
 
+	inline static vec3 random(float min, float max)
+	{
+		return vec3(Random(min, max), Random(min, max), Random(min, max));
+	}
 };
 
 using point3 = vec3;
@@ -123,3 +132,44 @@ inline vec3 cross(const vec3& va, const vec3& vb)
 
 #pragma endregion
 
+vec3 RandomInUnitSphere()
+{
+	while (true)
+	{
+		auto p = vec3::random(-1, 1);
+		if (p.sqrMagnitude() >= 1)
+			continue;
+		return p;
+	}
+}
+
+vec3 RandomInHemisphere(vec3 normal)
+{
+	auto v = RandomInUnitSphere();
+	if (dot(v, normal) > 0.f)
+	{
+		return v;
+	}
+	return -v;
+}
+
+vec3 Reflect(const vec3& v, const vec3& n)
+{
+	return v - 2 * dot(v, n) * n;
+}
+
+vec3 Refract(const vec3& uv, const vec3& n, float factor)
+{
+	auto cost = fmin(dot(-uv, n), 1.f);
+	vec3 routPrep = factor * (uv + cost * n);
+	vec3 routParallel = -sqrt(fabs(1.0 - routPrep.sqrMagnitude())) * n;
+	return routParallel + routPrep;
+}
+
+vec3 RandomInUnitDisk() {
+	while (true) {
+		auto p = vec3(Random(-1, 1), Random(-1, 1), 0);
+		if (p.sqrMagnitude() >= 1) continue;
+		return p;
+	}
+}

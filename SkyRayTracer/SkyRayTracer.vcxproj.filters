@@ -19,6 +19,9 @@
     <Filter Include="源文件\Math&amp;Constants">
       <UniqueIdentifier>{b588a30e-80b1-4ae6-9397-a1b37536c183}</UniqueIdentifier>
     </Filter>
+    <Filter Include="源文件\Material">
+      <UniqueIdentifier>{1c1a4cde-3743-4de6-90e3-ccd14ab5c84c}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -46,6 +49,12 @@
     </ClInclude>
     <ClInclude Include="vec3.h">
       <Filter>源文件\Math&amp;Constants</Filter>
+    </ClInclude>
+    <ClInclude Include="material.h">
+      <Filter>源文件\Material</Filter>
+    </ClInclude>
+    <ClInclude Include="camera.h">
+      <Filter>源文件\Objects</Filter>
     </ClInclude>
   </ItemGroup>
 </Project>
