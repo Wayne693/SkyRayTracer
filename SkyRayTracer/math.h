@@ -29,6 +29,11 @@ inline double Random(float min, float max)
 	return min + (max - min) * Random();
 }
 
+inline int Randomi(int min, int max) {
+	// Returns a random integer in [min,max].
+	return static_cast<int>(Random(min, max + 1));
+}
+
 inline float Clamp(float x, float min, float max)
 {
 	return std::min(max, std::max(x, min));

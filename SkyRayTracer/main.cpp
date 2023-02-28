@@ -10,31 +10,30 @@
 #include "Camera.h"
 #include <memory>
 #include "material.h"
+#include "aarect.h"
+#include "aabb.h"
+#include "Box.h"
 
-color RayColor(const Ray& r, const HittableList& scene, int depth)
+color RayColor(const Ray& r,const color& backGround, const HittableList& scene, int depth)
 {
 	HitRecord rec;
 
 	if (depth <= 0)
 		return color(0, 0, 0);
 
-	if (scene.hit(r, 0.01, INF, rec))
+	if (!scene.hit(r, 0.01, INF, rec))
 	{
-		//point3 target = rec.p + rec.normal + RandomInUnitSphere().normalized();//单位球内一点
-		//point3 target = rec.p + rec.normal + RandomInUnitSphere().normalized();//单位球面一点
-		//point3 target = rec.p + RandomInHemisphere(rec.normal);//单位半球内一点
-		//return 0.5 * RayColor(Ray(rec.p, target - rec.p), scene, depth - 1);
-		Ray scattered;
-		color attenuation;
-		if (rec.mat_ptr->scatter(r, rec, attenuation, scattered))
-		{
-			return attenuation * RayColor(scattered, scene, depth - 1);
-		}
-		return color(0, 0, 0);
+		return backGround;
 	}
-	vec3 dir = r.direction().normalized();
-	auto t = 0.5 * (dir.y() + 1.f);
-	return (1.f - t) * color(1.f, 1.f, 1.f) + t * color(0.5, 0.7, 1.0);
+
+	Ray scattered;
+	color attenuation;
+	color emitted = rec.mat_ptr->emitted(rec.u, rec.v, rec.p);
+	if (!rec.mat_ptr->scatter(r, rec, attenuation, scattered))
+	{
+		return emitted;
+	}
+	return emitted + attenuation * RayColor(scattered, backGround, scene, depth - 1);
 }
 
 HittableList random_scene() {
@@ -85,39 +84,89 @@ HittableList random_scene() {
 	return world;
 }
 
+HittableList simple_light()
+{
+	HittableList objects;
+
+	auto objtex = std::make_shared<Solid>(0.5, 0.7, 1.0);
+	objects.add(std::make_shared<Sphere>(point3(0, -1000, 0), 1000, std::make_shared<Lambertian>(objtex)));
+	objects.add(std::make_shared<Sphere>(point3(0, 2, 0), 2, std::make_shared<Lambertian>(objtex)));
+
+	auto diffLight = std::make_shared<DiffuseLight>(color(4, 4, 4));
+	objects.add(std::make_shared<RectXY>(1, 5, 1, 5, -3, diffLight));
+
+	return objects;
+}
+
+HittableList cornell_box() {
+	HittableList objects;
+
+	auto red = std::make_shared<Lambertian>(color(.65, .05, .05));
+	auto white = std::make_shared<Lambertian>(color(.73, .73, .73));
+	auto green = std::make_shared<Lambertian>(color(.12, .45, .15));
+	auto light = std::make_shared<DiffuseLight>(color(15, 15, 15));
+
+	objects.add(std::make_shared<RectYZ>(0, 555, 0, 555, 555, green));
+	objects.add(std::make_shared<RectYZ>(0, 555, 0, 555, 0, red));
+	objects.add(std::make_shared<RectXZ>(163, 393, 177, 382, 554, light));//+50
+	objects.add(std::make_shared<RectXZ>(0, 555, 0, 555, 0, white));
+	objects.add(std::make_shared<RectXZ>(0, 555, 0, 555, 555, white));
+	objects.add(std::make_shared<RectXY>(0, 555, 0, 555, 555, white));
+
+	std::shared_ptr<Hittable> box1 = std::make_shared<Box>(point3(0, 0, 0), point3(165, 330, 165), white);
+	box1 = std::make_shared<RotateY>(box1, 15);
+	box1 = std::make_shared<Translate>(box1, vec3(265, 0, 295));
+	objects.add(box1);
+
+	std::shared_ptr<Hittable> box2 = std::make_shared<Box>(point3(0, 0, 0), point3(165, 165, 165), white);
+	box2 = std::make_shared<RotateY>(box2, -18);
+	box2 = std::make_shared<Translate>(box2, vec3(130, 0, 65));
+	objects.add(box2);
+
+	return objects;
+}
+
 int main()
 {
 	std::string filename = "C:\\Users\\Kingsoft\\Desktop\\image.ppm";
 	std::ofstream image(filename.data());
 
 	// Image
-	const auto aspect_ratio = 3.0 / 2.0;
-	const int image_width = 1200;
+	const auto aspect_ratio = 1.0;
+	const int image_width = 600;
 	const int image_height = static_cast<int>(image_width / aspect_ratio);
-	const int sampleTimes = 500;
+	const int sampleTimes = 10000;
 	const int maxStep = 50;
 
 	//Scene
-	HittableList scene;
-	/*auto material_ground = std::make_shared<Lambertian>(color(0.8, 0.8, 0.0));
-	auto material_center = std::make_shared<Lambertian>(color(0.1, 0.2, 0.5));
-	auto material_left = std::make_shared<Dielectric>(1.5);
-	auto material_right = std::make_shared<Metal>(color(0.8, 0.6, 0.2), 1);
+	HittableList scene = cornell_box();
+	color background = color(0, 0, 0);
+	vec3 lookfrom = point3(278, 278, -800);
+	vec3 lookat = vec3(278, 278, 0);
+	float fov = 40.0;
+	{
+//auto material_ground = std::make_shared<Lambertian>(color(0.8, 0.8, 0.0));
+	////auto material_center = std::make_shared<Lambertian>(color(0.1, 0.2, 0.5));
+	//auto material_left = std::make_shared<Dielectric>(1.5);
+	//auto material_right = std::make_shared<Metal>(color(1, 0.86, 0.57), 1);
 
-	scene.add(std::make_shared<Sphere>(point3(0.0, -100.5, -1.0), 100.0, material_ground));
-	scene.add(std::make_shared<Sphere>(point3(0.0, 0.0, -1.0), 0.5, material_center));
-	scene.add(std::make_shared<Sphere>(point3(-1.0, 0.0, -1.0), 0.5, material_left));
-	scene.add(std::make_shared<Sphere>(point3(-1.0, 0.0, -1.0), -0.45, material_left));
-	scene.add(std::make_shared<Sphere>(point3(1.0, 0.0, -1.0), 0.5, material_right));*/
-	scene = random_scene();
-	// Camera
-	point3 lookfrom(13, 2, 3);
-	point3 lookat(0, 0, 0);
+	//scene.add(std::make_shared<Sphere>(point3(0.0, -100.5, -1.0), 100.0, material_ground));
+	///*scene.add(std::make_shared<Sphere>(point3(0.0, 0.0, -1.0), 0.5, material_center));
+	//scene.add(std::make_shared<Sphere>(point3(-1.0, 0.0, -1.0), 0.5, material_left));*/
+	////scene.add(std::make_shared<Sphere>(point3(0.1, 0.0, -0.7), 0.2, material_left));
+	//scene.add(std::make_shared<Sphere>(point3(0.0, 0.0, -1.5), 0.5, material_right));
+	////scene = random_scene();
+	//// Camera
+	//point3 lookfrom(0, 0, 0);
+	//point3 lookat(0, 0, -1);
+	//vec3 vup(0, 1, 0);
+	//auto dist_to_focus = 1.0;
+	//auto aperture = 0.1;
+	}
+	
 	vec3 vup(0, 1, 0);
 	auto dist_to_focus = 10.0;
-	auto aperture = 0.1;
-
-	Camera camera(lookfrom, lookat, vup, 20, aspect_ratio, aperture, dist_to_focus);
+	Camera camera(lookfrom, lookat, vup, fov, aspect_ratio, 0, dist_to_focus);
 
 	//Render
 	image << "P3\n" << image_width << ' ' << image_height << "\n255\n";
@@ -136,7 +185,7 @@ int main()
 				auto u = (i + Random()) / (image_width - 1);
 				auto v = (j + Random()) / (image_height - 1);
 				Ray r = camera.GetRay(u, v);
-				pixelColor += RayColor(r, scene, maxStep);
+				pixelColor += RayColor(r, background, scene, maxStep);
 			}
 			Draw(image, pixelColor, sampleTimes);
 		}

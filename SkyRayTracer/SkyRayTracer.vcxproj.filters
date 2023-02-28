@@ -56,5 +56,20 @@
     <ClInclude Include="camera.h">
       <Filter>源文件\Objects</Filter>
     </ClInclude>
+    <ClInclude Include="aabb.h">
+      <Filter>源文件\Objects</Filter>
+    </ClInclude>
+    <ClInclude Include="bvh.h">
+      <Filter>源文件\Objects</Filter>
+    </ClInclude>
+    <ClInclude Include="Texture.h">
+      <Filter>源文件</Filter>
+    </ClInclude>
+    <ClInclude Include="aarect.h">
+      <Filter>源文件\Objects</Filter>
+    </ClInclude>
+    <ClInclude Include="Box.h">
+      <Filter>源文件\Objects</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>

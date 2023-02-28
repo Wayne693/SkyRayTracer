@@ -13,7 +13,8 @@ public:
 	void add(std::shared_ptr<Hittable> object) { objects.push_back(object); }
 
 	bool hit(const Ray& r, float tmin, float tmax, HitRecord& rec) const;
-private:
+	bool boundingbox(float t0, float t1, Aabb& outputBox) const;
+public:
 	std::vector<std::shared_ptr<Hittable>> objects;
 };
 
@@ -34,4 +35,24 @@ bool HittableList::hit(const Ray& r, float tmin, float tmax, HitRecord& rec) con
 	}
 
 	return hit_anything;
+}
+
+bool HittableList::boundingbox(float t0, float t1, Aabb& outputBox) const
+{
+	if (objects.empty())
+	{
+		return false;
+	}
+
+	Aabb tmpBox;
+	bool firstBox = true;
+
+	for (const auto& object : objects)
+	{
+		if (!object->boundingbox(t0, t1, tmpBox)) return false;
+		outputBox = firstBox ? tmpBox : SurroundingBox(outputBox, tmpBox);
+		firstBox = false;
+	}
+
+	return true;
 }

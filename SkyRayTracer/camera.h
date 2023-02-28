@@ -10,7 +10,6 @@ public:
 		auto theta = DegreesToRadians(fov);
 		auto viewportHeight = 2 * tan(theta / 2);
 		auto viewportWidth = viewportHeight * aspect;
-		//auto focal = 1.f;
 
 		 w = (pos - lookat).normalized();
 		 u = cross(up, w).normalized();

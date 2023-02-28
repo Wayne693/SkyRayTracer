@@ -2,28 +2,33 @@
 #include "ray.h"
 #include "vec3.h"
 #include "hittable.h"
+#include "Texture.h"
 
 class Material
 {
 public:
 	virtual bool scatter(const Ray& rin, const HitRecord& rec, color& attenuation, Ray& scattered) const = 0;
+	virtual color emitted(float u, float v, const point3& p) const {
+		return color(0, 0, 0);
+	}
 };
 
 class Lambertian :public Material
 {
 public:
-	Lambertian(const color& a) : albedo(a) {}
+	Lambertian(const color& a) : albedo(std::make_shared<Solid>(a)) {}
+	Lambertian(std::shared_ptr<Texture> a) :albedo(a) {}
 
 	virtual bool scatter(const Ray& rin, const HitRecord& rec, color& attenuation, Ray& scattered) const override
 	{
 		auto scatterDir = RandomInHemisphere(rec.normal);
 		scattered = Ray(rec.p, scatterDir);
-		attenuation = albedo;
+		attenuation = albedo->value(rec.u, rec.v, rec.p);
 		return true;
 	}
 
 private:
-	color albedo;
+	std::shared_ptr<Texture> albedo;
 };
 
 class Metal :public Material
@@ -77,5 +82,25 @@ private:
 		r0 = r0 * r0;
 		return r0 + (1 - r0) * pow((1 - cosine), 5);
 	}
+};
+
+class DiffuseLight :public Material
+{
+public:
+	DiffuseLight(std::shared_ptr<Texture> a) : emit(a){}
+	DiffuseLight(color col) :emit(std::make_shared<Solid>(col)) {}
+
+	virtual bool scatter(const Ray& rin, const HitRecord& rec, color& attenuation, Ray& scattered) const override
+	{
+		return false;
+	}
+
+	virtual color emitted(float u, float v, const point3& p)const override
+	{
+		return emit->value(u, v, p);
+	}
+
+public:
+	std::shared_ptr<Texture> emit;
 };
 
