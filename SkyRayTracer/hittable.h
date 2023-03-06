@@ -26,6 +26,14 @@ class Hittable
 public:
 	virtual bool hit(const Ray& r, float tmin, float tmax, HitRecord& rec) const = 0;
 	virtual bool boundingbox(float t0, float t1, Aabb& outputBox) const = 0;
+	virtual float pdf_value(const point3& o, const vec3& v) const 
+	{
+		return 0;
+	}
+	virtual vec3 random(const vec3& o) const
+	{
+		return vec3(1, 0, 0);
+	}
 };
 
 class Translate : public Hittable

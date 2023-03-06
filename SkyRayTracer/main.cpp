@@ -13,8 +13,9 @@
 #include "aarect.h"
 #include "aabb.h"
 #include "Box.h"
+#include "pdf.h"
 
-color RayColor(const Ray& r,const color& backGround, const HittableList& scene, int depth)
+color RayColor(const Ray& r,const color& backGround, const HittableList& scene, int depth, std::shared_ptr<Hittable> light)
 {
 	HitRecord rec;
 
@@ -29,11 +30,72 @@ color RayColor(const Ray& r,const color& backGround, const HittableList& scene, 
 	Ray scattered;
 	color attenuation;
 	color emitted = rec.mat_ptr->emitted(rec.u, rec.v, rec.p);
-	if (!rec.mat_ptr->scatter(r, rec, attenuation, scattered))
+	float pdfval;
+
+	if (!rec.mat_ptr->scatter(r, rec, attenuation, scattered, pdfval))
 	{
 		return emitted;
 	}
-	return emitted + attenuation * RayColor(scattered, backGround, scene, depth - 1);
+
+	{
+		
+//auto onLight = point3(Random(213, 343), 554, Random(227, 332));
+//	auto toLight = onLight - rec.p;
+//	auto distancesqr = toLight.sqrMagnitude();
+//	toLight.normalize();
+//	///*if (dot(toLight, rec.normal) < 0)
+//	//	return emitted;*/
+//
+//	float lightArea = (343 - 213) * (332 - 227);
+//	auto lightCos = fabs(dot(vec3(0, -1, 0), -toLight));
+//	//auto lightCos = dot(toLight, rec.normal);
+//	/*if (lightCos < 0.000001)
+//		return emitted;*/
+//	//lightCos = fmax(0.000001f, lightCos);
+//	
+//	if (Random() < 0.5f)
+//	{
+//		scattered = Ray(rec.p, toLight);
+//	}
+//	//printf("%lf disqr = %lf lightCos = %lf lightArea = %lf\n", (distancesqr / (lightCos * lightArea)), distancesqr, lightCos, lightArea);
+//	/*if (lightCos <= 0)
+//	{
+//		pdf = 0.5 * dot(rec.normal, scattered.direction().normalized()) / PI;
+//	}
+//	else*/
+//	
+//	float lpdf;
+//	//HitRecord tmp;
+//	//if (dot(rec.normal, toLight) <= 0)
+//	//{
+//	//	//printf("hh\n");
+//	//	/*lpdf = 0; */
+//	//	//return color(1, 1, 1);
+//	//	lpdf = 0;
+//	//}
+//	//else 
+//	HitRecord tmp;
+//	if (!light->hit(Ray(rec.p, scattered.direction()), 0.001f, INF, tmp))
+//	{
+//		lpdf = 0;
+//	}
+//	else lpdf = distancesqr / (lightCos * lightArea);
+//	//printf("lpdf --- dis = %lf lc = %lf la = %lf\n", distancesqr, lightCos, lightArea);
+//	auto p = std::make_shared<HittablePDF>(light, rec.p);
+//	pdfval = 0.5 * lpdf + 0.5 * fmax(0,dot(rec.normal, scattered.direction())) / PI;
+//	/*if(lpdf < pdf)*/
+//		//printf("%lf %lf\n", lpdf, pdf);
+//	
+//	//pdfval = fmax(0.000001f, pdfval);
+	}
+	
+	auto p0 = std::make_shared<CosPDF>(rec.normal);
+	auto p1 = std::make_shared<HittablePDF>(light, rec.p);
+	MixPDF p(p0, p1);
+	scattered = Ray(rec.p, p.generate());
+	pdfval = p.value(scattered.direction());
+
+	return emitted + attenuation * rec.mat_ptr->scattering_pdf(r, rec, scattered) * RayColor(scattered, backGround, scene, depth - 1, light) / pdfval;
 }
 
 HittableList random_scene() {
@@ -108,7 +170,7 @@ HittableList cornell_box() {
 
 	objects.add(std::make_shared<RectYZ>(0, 555, 0, 555, 555, green));
 	objects.add(std::make_shared<RectYZ>(0, 555, 0, 555, 0, red));
-	objects.add(std::make_shared<RectXZ>(163, 393, 177, 382, 554, light));//+50
+	objects.add(std::make_shared<RectXZ>(213, 343, 227, 332, 554, light));//+50
 	objects.add(std::make_shared<RectXZ>(0, 555, 0, 555, 0, white));
 	objects.add(std::make_shared<RectXZ>(0, 555, 0, 555, 555, white));
 	objects.add(std::make_shared<RectXY>(0, 555, 0, 555, 555, white));
@@ -133,9 +195,9 @@ int main()
 
 	// Image
 	const auto aspect_ratio = 1.0;
-	const int image_width = 600;
+	const int image_width = 300;
 	const int image_height = static_cast<int>(image_width / aspect_ratio);
-	const int sampleTimes = 10000;
+	const int sampleTimes = 2000;
 	const int maxStep = 50;
 
 	//Scene
@@ -168,6 +230,8 @@ int main()
 	auto dist_to_focus = 10.0;
 	Camera camera(lookfrom, lookat, vup, fov, aspect_ratio, 0, dist_to_focus);
 
+	auto lightmtl = std::make_shared<DiffuseLight>(color(15, 15, 15));
+	auto light = std::make_shared<RectXZ>(213, 343, 227, 332, 554, lightmtl);
 	//Render
 	image << "P3\n" << image_width << ' ' << image_height << "\n255\n";
 
@@ -185,7 +249,7 @@ int main()
 				auto u = (i + Random()) / (image_width - 1);
 				auto v = (j + Random()) / (image_height - 1);
 				Ray r = camera.GetRay(u, v);
-				pixelColor += RayColor(r, background, scene, maxStep);
+				pixelColor += RayColor(r, background, scene, maxStep, light);
 			}
 			Draw(image, pixelColor, sampleTimes);
 		}

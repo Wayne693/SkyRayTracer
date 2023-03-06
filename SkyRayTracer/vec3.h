@@ -62,7 +62,7 @@ public:
 		return *this /= magnitude();
 	}
 
-	vec3 normalized() {
+	vec3 normalized() const{
 		return *this / magnitude();
 	}
 private:

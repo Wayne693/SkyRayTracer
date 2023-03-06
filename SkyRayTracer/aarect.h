@@ -38,7 +38,23 @@ public:
 		outputBox = Aabb(vec3(x0, k - 0.0001, z0), vec3(x1, k + 0.0001, z1));
 		return true;
 	}
+	virtual float pdf_value(const point3& origin, const vec3& v)const override
+	{
+		HitRecord rec;
+		if (!this->hit(Ray(origin, v), 0.001, INF, rec))
+			return 0;
 
+		auto area = (x1 - x0) * (z1 - z0);
+		auto distance_squared = rec.t * rec.t * v.sqrMagnitude();
+		auto cosine = fabs(dot(v, rec.normal) / v.magnitude());
+
+		return distance_squared / (cosine * area);
+	}
+
+	virtual vec3 random(const point3& origin) const override {
+		auto random_point = point3(Random(x0, x1), k, Random(z0, z1));
+		return random_point - origin;
+	}
 public:
 	std::shared_ptr<Material> mp;
 	float x0, x1, z0, z1, k;

@@ -71,5 +71,11 @@
     <ClInclude Include="Box.h">
       <Filter>源文件\Objects</Filter>
     </ClInclude>
+    <ClInclude Include="onb.h">
+      <Filter>源文件\Objects</Filter>
+    </ClInclude>
+    <ClInclude Include="pdf.h">
+      <Filter>源文件</Filter>
+    </ClInclude>
   </ItemGroup>
 </Project>
