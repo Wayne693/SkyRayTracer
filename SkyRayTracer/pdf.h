@@ -3,6 +3,18 @@
 #include "math.h"
 #include "onb.h"
 
+inline vec3 random_cosine_direction() {
+    auto r1 = Random();
+    auto r2 = Random();
+    auto z = sqrt(1 - r2);
+
+    auto phi = 2 * PI * r1;
+    auto x = cos(phi) * sqrt(r2);
+    auto y = sin(phi) * sqrt(r2);
+
+    return vec3(x, y, z);
+}
+
 class pdf
 {
 public:

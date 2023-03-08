@@ -27,155 +27,108 @@ color RayColor(const Ray& r,const color& backGround, const HittableList& scene, 
 		return backGround;
 	}
 
-	Ray scattered;
-	color attenuation;
-	color emitted = rec.mat_ptr->emitted(rec.u, rec.v, rec.p);
-	float pdfval;
+	scatter_record srec;
+	color emitted = rec.mat_ptr->emitted(r, rec, rec.u, rec.v, rec.p);
 
-	if (!rec.mat_ptr->scatter(r, rec, attenuation, scattered, pdfval))
+	if (!rec.mat_ptr->scatter(r, rec, srec))
 	{
 		return emitted;
 	}
-
-	{
-		
-//auto onLight = point3(Random(213, 343), 554, Random(227, 332));
-//	auto toLight = onLight - rec.p;
-//	auto distancesqr = toLight.sqrMagnitude();
-//	toLight.normalize();
-//	///*if (dot(toLight, rec.normal) < 0)
-//	//	return emitted;*/
-//
-//	float lightArea = (343 - 213) * (332 - 227);
-//	auto lightCos = fabs(dot(vec3(0, -1, 0), -toLight));
-//	//auto lightCos = dot(toLight, rec.normal);
-//	/*if (lightCos < 0.000001)
-//		return emitted;*/
-//	//lightCos = fmax(0.000001f, lightCos);
-//	
-//	if (Random() < 0.5f)
-//	{
-//		scattered = Ray(rec.p, toLight);
-//	}
-//	//printf("%lf disqr = %lf lightCos = %lf lightArea = %lf\n", (distancesqr / (lightCos * lightArea)), distancesqr, lightCos, lightArea);
-//	/*if (lightCos <= 0)
-//	{
-//		pdf = 0.5 * dot(rec.normal, scattered.direction().normalized()) / PI;
-//	}
-//	else*/
-//	
-//	float lpdf;
-//	//HitRecord tmp;
-//	//if (dot(rec.normal, toLight) <= 0)
-//	//{
-//	//	//printf("hh\n");
-//	//	/*lpdf = 0; */
-//	//	//return color(1, 1, 1);
-//	//	lpdf = 0;
-//	//}
-//	//else 
-//	HitRecord tmp;
-//	if (!light->hit(Ray(rec.p, scattered.direction()), 0.001f, INF, tmp))
-//	{
-//		lpdf = 0;
-//	}
-//	else lpdf = distancesqr / (lightCos * lightArea);
-//	//printf("lpdf --- dis = %lf lc = %lf la = %lf\n", distancesqr, lightCos, lightArea);
-//	auto p = std::make_shared<HittablePDF>(light, rec.p);
-//	pdfval = 0.5 * lpdf + 0.5 * fmax(0,dot(rec.normal, scattered.direction())) / PI;
-//	/*if(lpdf < pdf)*/
-//		//printf("%lf %lf\n", lpdf, pdf);
-//	
-//	//pdfval = fmax(0.000001f, pdfval);
-	}
 	
-	auto p0 = std::make_shared<CosPDF>(rec.normal);
-	auto p1 = std::make_shared<HittablePDF>(light, rec.p);
-	MixPDF p(p0, p1);
-	scattered = Ray(rec.p, p.generate());
-	pdfval = p.value(scattered.direction());
-
-	return emitted + attenuation * rec.mat_ptr->scattering_pdf(r, rec, scattered) * RayColor(scattered, backGround, scene, depth - 1, light) / pdfval;
-}
-
-HittableList random_scene() {
-	HittableList world;
-
-	auto ground_material = std::make_shared<Lambertian>(color(0.5, 0.5, 0.5));
-	world.add(std::make_shared<Sphere>(point3(0, -1000, 0), 1000, ground_material));
-
-	for (int a = -11; a < 11; a++) {
-		for (int b = -11; b < 11; b++) {
-			auto choose_mat = Random();
-			point3 center(a + 0.9 * Random(), 0.2, b + 0.9 * Random());
-
-			if ((center - point3(4, 0.2, 0)).magnitude() > 0.9) {
-				std::shared_ptr<Material> sphere_material;
-
-				if (choose_mat < 0.8) {
-					// diffuse
-					auto albedo = color::random() * color::random();
-					sphere_material = std::make_shared<Lambertian>(albedo);
-					world.add(std::make_shared<Sphere>(center, 0.2, sphere_material));
-				}
-				else if (choose_mat < 0.95) {
-					// metal
-					auto albedo = color::random(0.5, 1);
-					auto fuzz = Random(0, 0.5);
-					sphere_material = std::make_shared<Metal>(albedo, fuzz);
-					world.add(std::make_shared<Sphere>(center, 0.2, sphere_material));
-				}
-				else {
-					// glass
-					sphere_material = std::make_shared<Dielectric>(1.5);
-					world.add(std::make_shared<Sphere>(center, 0.2, sphere_material));
-				}
-			}
-		}
+	if (srec.is_specular)
+	{
+		return srec.attenuation * RayColor(srec.speculer_ray, backGround, scene, depth - 1, light);
 	}
 
-	auto material1 = std::make_shared<Dielectric>(1.5);
-	world.add(std::make_shared<Sphere>(point3(0, 1, 0), 1.0, material1));
+	auto light_ptr = std::make_shared<HittablePDF>(light, rec.p);
+	MixPDF p(light_ptr, srec.pdf_ptr);
+	auto scattered = Ray(rec.p, p.generate());
+	auto pdfval = p.value(scattered.direction());
 
-	auto material2 = std::make_shared<Lambertian>(color(0.4, 0.2, 0.1));
-	world.add(std::make_shared<Sphere>(point3(-4, 1, 0), 1.0, material2));
-
-	auto material3 = std::make_shared<Metal>(color(0.7, 0.6, 0.5), 0.0);
-	world.add(std::make_shared<Sphere>(point3(4, 1, 0), 1.0, material3));
-
-	return world;
+	auto ndotwi = dot(rec.normal.normalized(), scattered.direction().normalized());
+	return emitted + rec.mat_ptr->scattering_pdf(r, rec, scattered) * RayColor(scattered, backGround, scene, depth - 1, light) * fmax(0, ndotwi) / pdfval;
 }
 
-HittableList simple_light()
-{
-	HittableList objects;
+//HittableList random_scene() {
+//	HittableList world;
+//
+//	auto ground_material = std::make_shared<Lambertian>(color(0.5, 0.5, 0.5));
+//	world.add(std::make_shared<Sphere>(point3(0, -1000, 0), 1000, ground_material));
+//
+//	for (int a = -11; a < 11; a++) {
+//		for (int b = -11; b < 11; b++) {
+//			auto choose_mat = Random();
+//			point3 center(a + 0.9 * Random(), 0.2, b + 0.9 * Random());
+//
+//			if ((center - point3(4, 0.2, 0)).magnitude() > 0.9) {
+//				std::shared_ptr<Material> sphere_material;
+//
+//				if (choose_mat < 0.8) {
+//					// diffuse
+//					auto albedo = color::random() * color::random();
+//					sphere_material = std::make_shared<Lambertian>(albedo);
+//					world.add(std::make_shared<Sphere>(center, 0.2, sphere_material));
+//				}
+//				else if (choose_mat < 0.95) {
+//					// metal
+//					auto albedo = color::random(0.5, 1);
+//					auto fuzz = Random(0, 0.5);
+//					sphere_material = std::make_shared<Metal>(albedo, fuzz);
+//					world.add(std::make_shared<Sphere>(center, 0.2, sphere_material));
+//				}
+//				else {
+//					// glass
+//					sphere_material = std::make_shared<Dielectric>(1.5);
+//					world.add(std::make_shared<Sphere>(center, 0.2, sphere_material));
+//				}
+//			}
+//		}
+//	}
+//
+//	auto material1 = std::make_shared<Dielectric>(1.5);
+//	world.add(std::make_shared<Sphere>(point3(0, 1, 0), 1.0, material1));
+//
+//	auto material2 = std::make_shared<Lambertian>(color(0.4, 0.2, 0.1));
+//	world.add(std::make_shared<Sphere>(point3(-4, 1, 0), 1.0, material2));
+//
+//	auto material3 = std::make_shared<Metal>(color(0.7, 0.6, 0.5), 0.0);
+//	world.add(std::make_shared<Sphere>(point3(4, 1, 0), 1.0, material3));
+//
+//	return world;
+//}
 
-	auto objtex = std::make_shared<Solid>(0.5, 0.7, 1.0);
-	objects.add(std::make_shared<Sphere>(point3(0, -1000, 0), 1000, std::make_shared<Lambertian>(objtex)));
-	objects.add(std::make_shared<Sphere>(point3(0, 2, 0), 2, std::make_shared<Lambertian>(objtex)));
-
-	auto diffLight = std::make_shared<DiffuseLight>(color(4, 4, 4));
-	objects.add(std::make_shared<RectXY>(1, 5, 1, 5, -3, diffLight));
-
-	return objects;
-}
+//HittableList simple_light()
+//{
+//	HittableList objects;
+//
+//	auto objtex = std::make_shared<Solid>(0.5, 0.7, 1.0);
+//	objects.add(std::make_shared<Sphere>(point3(0, -1000, 0), 1000, std::make_shared<Lambertian>(objtex)));
+//	objects.add(std::make_shared<Sphere>(point3(0, 2, 0), 2, std::make_shared<Lambertian>(objtex)));
+//
+//	auto diffLight = std::make_shared<DiffuseLight>(color(4, 4, 4));
+//	objects.add(std::make_shared<RectXY>(1, 5, 1, 5, -3, diffLight));
+//
+//	return objects;
+//}
 
 HittableList cornell_box() {
 	HittableList objects;
 
-	auto red = std::make_shared<Lambertian>(color(.65, .05, .05));
-	auto white = std::make_shared<Lambertian>(color(.73, .73, .73));
-	auto green = std::make_shared<Lambertian>(color(.12, .45, .15));
+	auto red = std::make_shared<CookTorrance>(color(.65, .05, .05), 0.5);
+	auto white = std::make_shared<CookTorrance>(color(.73, .73, .73), 0.5);
+	auto green = std::make_shared<CookTorrance>(color(.12, .45, .15), 0.5);
 	auto light = std::make_shared<DiffuseLight>(color(15, 15, 15));
+	auto gold = std::make_shared<CookTorrance>(color(1, 0.71, 0.29), 0.2, vec3(1, 0.71, 0.29));
+	auto sliver = std::make_shared<CookTorrance>(color(0.91, 0.92, 0.92), 0.1, vec3(0.91, 0.92, 0.92));
 
 	objects.add(std::make_shared<RectYZ>(0, 555, 0, 555, 555, green));
 	objects.add(std::make_shared<RectYZ>(0, 555, 0, 555, 0, red));
-	objects.add(std::make_shared<RectXZ>(213, 343, 227, 332, 554, light));//+50
+	objects.add(std::make_shared<RectXZ>(213, 343, 227, 332, 554, light));
 	objects.add(std::make_shared<RectXZ>(0, 555, 0, 555, 0, white));
 	objects.add(std::make_shared<RectXZ>(0, 555, 0, 555, 555, white));
 	objects.add(std::make_shared<RectXY>(0, 555, 0, 555, 555, white));
 
-	std::shared_ptr<Hittable> box1 = std::make_shared<Box>(point3(0, 0, 0), point3(165, 330, 165), white);
+	std::shared_ptr<Hittable> box1 = std::make_shared<Box>(point3(0, 0, 0), point3(165, 330, 165), gold);
 	box1 = std::make_shared<RotateY>(box1, 15);
 	box1 = std::make_shared<Translate>(box1, vec3(265, 0, 295));
 	objects.add(box1);
@@ -184,6 +137,10 @@ HittableList cornell_box() {
 	box2 = std::make_shared<RotateY>(box2, -18);
 	box2 = std::make_shared<Translate>(box2, vec3(130, 0, 65));
 	objects.add(box2);
+
+	std::shared_ptr<Hittable> sphere1 = std::make_shared<Sphere>(point3(0, 0, 0), 75, sliver);
+	sphere1 = std::make_shared<Translate>(sphere1, vec3(250, 275, 245));
+	objects.add(sphere1);
 
 	return objects;
 }
@@ -195,7 +152,7 @@ int main()
 
 	// Image
 	const auto aspect_ratio = 1.0;
-	const int image_width = 300;
+	const int image_width = 600;
 	const int image_height = static_cast<int>(image_width / aspect_ratio);
 	const int sampleTimes = 2000;
 	const int maxStep = 50;
