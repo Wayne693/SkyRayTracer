@@ -1,83 +1,98 @@
 #pragma once
 #include "vec3.h"
-#include "math.h"
+#include "utility.h"
 #include "onb.h"
 
-inline vec3 random_cosine_direction() {
-    auto r1 = Random();
-    auto r2 = Random();
-    auto z = sqrt(1 - r2);
+__device__ inline vec3 random_cosine_direction(curandState& rs) {
+	auto r1 = Random(rs);
+	auto r2 = Random(rs);
+	//printf("%lf %lf\n", r1, r2);
+	auto z = sqrt(1 - r2);
 
-    auto phi = 2 * PI * r1;
-    auto x = cos(phi) * sqrt(r2);
-    auto y = sin(phi) * sqrt(r2);
+	auto phi = 2 * PI * r1;
+	auto x = cos(phi) * sqrt(r2);
+	auto y = sin(phi) * sqrt(r2);
 
-    return vec3(x, y, z);
+	return vec3(x, y, z);
 }
 
 class pdf
 {
 public:
-	
-	virtual float value(const vec3& direction) const = 0;
-	virtual vec3 generate() const = 0;
+	__device__ virtual void buildonb(const vec3& n)
+	{
+		return;
+	}
+	__device__ virtual float value(const vec3& direction) const = 0;
+	__device__ virtual vec3 generate(curandState& rs) const = 0;
 };
 
 class CosPDF : public pdf {
 public:
-    CosPDF(const vec3& w) { uvw.build_from_w(w); }
+	//__device__ CosPDF(const vec3& w) { uvw.build_from_w(w); }
+	__device__ CosPDF(){}
 
-    virtual float value(const vec3& direction) const override {
-        auto cosine = dot(direction.normalized(), uvw.w());
-        return (cosine <= 0) ? 0 : cosine / PI;
-    }
+	__device__ virtual void buildonb(const vec3& n) override
+	{
+		uvw.build_from_w(n);
+	}
 
-    virtual vec3 generate() const override {
-        return uvw.local(random_cosine_direction());
-    }
+	__device__ virtual float value(const vec3& direction) const override
+	{
+		auto cosine = dot(direction.normalized(), uvw.w());
+		return (cosine <= 0) ? 0 : cosine / PI;
+	}
+
+	__device__ virtual vec3 generate(curandState& rs) const override
+	{
+		return uvw.local(random_cosine_direction(rs));
+	}
 
 public:
-    onb uvw;
+	onb uvw;
 };
 
 class HittablePDF : public pdf
 {
 public:
-    HittablePDF(std::shared_ptr<Hittable> p, const point3& origin):ptr(p),o(origin){}
+	__device__ HittablePDF(Hittable* p, const point3& origin) :ptr(p), o(origin) {}
 
-    virtual float value(const vec3& direction) const override
-    {
-        return ptr->pdf_value(o, direction);
-    }
+	__device__ virtual float value(const vec3& direction) const override
+	{
+		return ptr->pdf_value(o, direction);
+	}
 
-    virtual vec3 generate() const override
-    {
-        return ptr->random(o);
-    }
+	__device__ virtual vec3 generate(curandState& rs) const override
+	{
+		return ptr->random(o, rs);
+	}
 
 public:
-    point3 o;
-    std::shared_ptr<Hittable> ptr;
+	point3 o;
+	Hittable* ptr;
 };
 
-class MixPDF : public pdf {
+class MixPDF : public pdf
+{
 public:
-    MixPDF(std::shared_ptr<pdf> p0, std::shared_ptr<pdf> p1) {
-        p[0] = p0;
-        p[1] = p1;
-    }
+	__device__ MixPDF(pdf* p0, pdf* p1) {
+		p[0] = p0;
+		p[1] = p1;
+	}
 
-    virtual float value(const vec3& direction) const override {
-        return 0.5 * p[0]->value(direction) + 0.5 * p[1]->value(direction);
-    }
+	__device__ virtual float value(const vec3& direction) const override 
+	{
+		return 0.5 * p[0]->value(direction) + 0.5 * p[1]->value(direction);
+	}
 
-    virtual vec3 generate() const override {
-        if (Random() < 0.5)
-            return p[0]->generate();
-        else
-            return p[1]->generate();
-    }
+	__device__ virtual vec3 generate(curandState& rs) const override
+	{
+		if (Random(rs) < 0.5)
+			return p[0]->generate(rs);
+		else
+			return p[1]->generate(rs);
+	}
 
 public:
-    std::shared_ptr<pdf> p[2];
+	pdf* p[2];
 };

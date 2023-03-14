@@ -5,17 +5,17 @@
 class Sphere :public Hittable
 {
 public:
-	Sphere() {}
-	Sphere(point3 c, float r, std::shared_ptr<Material> m) :center(c), radius(r), mat_ptr(m) {};
+	__device__ Sphere() {}
+	__device__ Sphere(point3 c, float r, Material* m) :center(c), radius(r), mat_ptr(m) {};
 
-	virtual bool hit(const Ray& r, float tmin, float tmax, HitRecord& rec)const override;
-	virtual bool boundingbox(float t0, float t1, Aabb& outputBox)const override;
+	__device__ virtual bool hit(Ray& r, float tmin, float tmax, HitRecord& rec)const override;
+	__device__ virtual bool boundingbox(float t0, float t1, Aabb& outputBox)const override;
 private:
 	point3 center;
 	float radius;
-	std::shared_ptr<Material> mat_ptr;
+	Material* mat_ptr;
 private:
-	static void GetSphereUV(const point3& p, float& u, float& v)
+	__device__ static void GetSphereUV(const point3& p, float& u, float& v)
 	{
 		auto theta = acos(-p.y());
 		auto phi = atan2(-p.z(), p.x()) + PI;
@@ -25,7 +25,7 @@ private:
 	}
 };
 
-bool Sphere::hit(const Ray& r, float tmin, float tmax, HitRecord& rec)const
+__device__ bool Sphere::hit(Ray& r, float tmin, float tmax, HitRecord& rec)const
 {
 	vec3 oc = r.origin() - center;
 	auto a = r.direction().sqrMagnitude();
@@ -55,7 +55,7 @@ bool Sphere::hit(const Ray& r, float tmin, float tmax, HitRecord& rec)const
 	return true;
 }
 
-bool Sphere::boundingbox(float t0, float t1, Aabb& outputBox) const
+__device__ bool Sphere::boundingbox(float t0, float t1, Aabb& outputBox) const
 {
 	outputBox = Aabb(center - vec3(radius, radius, radius), center + vec3(radius, radius, radius));
 	return true;

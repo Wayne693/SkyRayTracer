@@ -22,6 +22,9 @@
     <Filter Include="源文件\Material">
       <UniqueIdentifier>{1c1a4cde-3743-4de6-90e3-ccd14ab5c84c}</UniqueIdentifier>
     </Filter>
+    <Filter Include="源文件\CUDA">
+      <UniqueIdentifier>{32709036-e306-4934-bb87-49aac4faa099}</UniqueIdentifier>
+    </Filter>
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="main.cpp">
@@ -44,7 +47,7 @@
     <ClInclude Include="hittableList.h">
       <Filter>源文件</Filter>
     </ClInclude>
-    <ClInclude Include="math.h">
+    <ClInclude Include="utility.h">
       <Filter>源文件\Math&amp;Constants</Filter>
     </ClInclude>
     <ClInclude Include="vec3.h">
@@ -77,5 +80,13 @@
     <ClInclude Include="pdf.h">
       <Filter>源文件</Filter>
     </ClInclude>
+    <ClInclude Include="cuda.cuh">
+      <Filter>源文件\CUDA</Filter>
+    </ClInclude>
+  </ItemGroup>
+  <ItemGroup>
+    <CudaCompile Include="cuda.cu">
+      <Filter>源文件\CUDA</Filter>
+    </CudaCompile>
   </ItemGroup>
 </Project>

@@ -2,10 +2,22 @@
 #include "vec3.h"
 #include "ray.h"
 
+
+
+__device__ void inline debug(vec3 v)
+{
+	printf("%lf %lf %lf\n", v.x(), v.y(), v.z());
+}
+
+__device__ void inline debug(float f)
+{
+	printf("%lf\n", f);
+}
+
 class Camera
 {
 public:
-	Camera(point3 pos, vec3 lookat, vec3 up, float fov, float aspect, float aperture, float focusDist)
+	__device__ Camera(point3 pos, vec3 lookat, vec3 up, float fov, float aspect, float aperture, float focusDist)
 	{
 		auto theta = DegreesToRadians(fov);
 		auto viewportHeight = 2 * tan(theta / 2);
@@ -14,7 +26,7 @@ public:
 		 w = (pos - lookat).normalized();
 		 u = cross(up, w).normalized();
 		 v = cross(w, u);
-
+		 
 		origin = pos;
 		hor = focusDist * viewportWidth * u;
 		ver = focusDist * viewportHeight * v;
@@ -23,14 +35,18 @@ public:
 		lenRadius = aperture / 2;
 	}
 
-	Ray GetRay(float s, float t) const
+	__device__ Ray GetRay(float s, float t, curandState& rs) const
 	{
-		vec3 rd = lenRadius * RandomInUnitDisk();
-		vec3 offset = u * rd.x() + v * rd.y();
-		return Ray(origin + offset, lowerLeftCorner + s * hor + t * ver - origin - offset);
+		//vec3 rd = lenRadius * RandomInUnitDisk();
+		//vec3 offset = u * rd.x() + v * rd.y();
+		vec3 offset = vec3(0, 0, 0);
+		vec3 tmp = lowerLeftCorner + s * hor + t * ver - origin - offset;
+		//printf("%lf %lf %lf %lf %lf\n", lowerLeftCorner.x(), lowerLeftCorner.y(), lowerLeftCorner.z(), s, t);
+		//printf("%lf %lf %lf\n", hor.x(), hor.y(), hor.z());s
+		return Ray(origin + offset, tmp, rs);
 	}
 
-private:
+public:
 	point3 origin;
 	point3 lowerLeftCorner;
 	vec3 hor;

@@ -11,23 +11,24 @@ struct scatter_record
 	Ray speculer_ray;
 	bool is_specular;
 	color attenuation;
-	std::shared_ptr<pdf> pdf_ptr;
+	pdf* pdf_ptr;
 };
 
 class Material
 {
 public:
-	virtual bool scatter(const Ray& rin, const HitRecord& rec, scatter_record& srec) const
+	__device__ virtual bool scatter(Ray& rin, const HitRecord& rec, scatter_record& srec) const
 	{
 		return false;
 	}
 
-	virtual color scattering_pdf(const Ray& rin, const HitRecord& rec, const Ray& scattered) const
+	__device__ virtual color scattering_pdf(Ray& rin, const HitRecord& rec, const Ray& scattered) const
 	{
 		return vec3(0, 0, 0);
 	}
 
-	virtual color emitted(const Ray& rin, const HitRecord& rec, float u, float v, const point3& p) const {
+	__device__ virtual color emitted(Ray& rin, const HitRecord& rec, float u, float v, const point3& p) const 
+	{
 		return color(0, 0, 0);
 	}
 };
@@ -121,24 +122,32 @@ public:
 class DiffuseLight :public Material
 {
 public:
-	DiffuseLight(std::shared_ptr<Texture> a) : emit(a){}
-	DiffuseLight(color col) :emit(std::make_shared<Solid>(col)) {}
+	__device__ DiffuseLight(Texture* a) : emit(a){}
+	__device__ DiffuseLight(color col)
+	{
+		emit = new Solid(col);
+	}
+	
+	__device__ ~DiffuseLight()
+	{
+		delete emit;
+	}
 
-	virtual bool scatter(const Ray& rin, const HitRecord& rec, scatter_record& srec) const override
+	__device__ virtual bool scatter( Ray& rin, const HitRecord& rec, scatter_record& srec) const override
 	{
 		return false;
 	}
 
-	virtual color emitted(const Ray& rin, const HitRecord& rec, float u, float v, const point3& p) const override
+	__device__ virtual color emitted( Ray& rin, const HitRecord& rec, float u, float v, const point3& p) const override
 	{
 		return emit->value(u, v, p);
 	}
 
 public:
-	std::shared_ptr<Texture> emit;
+	Texture* emit;
 };
 
-float NDFGGX(vec3 n, vec3 h, float r)
+__device__ inline float NDFGGX(vec3 n, vec3 h, float r)
 {
 	float sqrta = r * r;
 	float ndoth = fmax(0.f, dot(n, h));
@@ -151,7 +160,7 @@ float NDFGGX(vec3 n, vec3 h, float r)
 	return nom / denom;
 }
 
-float GeometrySchlickGGX(vec3 n, vec3 v, float k)
+__device__ inline float GeometrySchlickGGX(vec3 n, vec3 v, float k)
 {
 	float nom = dot(n, v);
 	float denom = nom * (1.f - k) + k;
@@ -159,7 +168,7 @@ float GeometrySchlickGGX(vec3 n, vec3 v, float k)
 	return nom / denom;
 }
 
-float GeometrySmith(vec3 n, vec3 v, vec3 l, float k)
+__device__ inline float GeometrySmith(vec3 n, vec3 v, vec3 l, float k)
 {
 	float sggx1 = GeometrySchlickGGX(n, v, k);
 	float sggx2 = GeometrySchlickGGX(n, l, k);
@@ -167,7 +176,7 @@ float GeometrySmith(vec3 n, vec3 v, vec3 l, float k)
 	return sggx1 * sggx2;
 }
 
-vec3 FresnelSchlick(vec3 n, vec3 v, vec3 f0)
+__device__ inline vec3 FresnelSchlick(vec3 n, vec3 v, vec3 f0)
 {
 	auto ndotv = dot(n, v);
 	return f0 + (vec3(1, 1, 1) - f0) * pow(1.f - ndotv, 5);
@@ -177,27 +186,31 @@ vec3 FresnelSchlick(vec3 n, vec3 v, vec3 f0)
 class CookTorrance :public Material
 {
 public:
-
-	CookTorrance(color a, float r):albedo(a), roughness(r)
+	__device__ CookTorrance(color a, float r):albedo(a), roughness(r)
 	{
 		f0 = vec3(0.04, 0.04, 0.04);
+		pdf_ptr = new CosPDF();
 	}
-	CookTorrance(color a, float r, vec3 f):albedo(a),roughness(r),f0(f) {}
-	
 
-	virtual bool scatter(const Ray& rin, const HitRecord& rec, scatter_record& srec) const
+	__device__ CookTorrance(color a, float r, vec3 f):albedo(a),roughness(r),f0(f)
+	{
+		pdf_ptr = new CosPDF();
+	}
+
+	__device__ virtual bool scatter(Ray& rin, const HitRecord& rec, scatter_record& srec) const
 	{
 		onb uvw;
 		uvw.build_from_w(rec.normal);
-		auto direction = uvw.local(random_cosine_direction());
-		srec.speculer_ray = Ray(rec.p, direction);
+		auto direction = uvw.local(random_cosine_direction(rin.randstate()));
+		srec.speculer_ray = Ray(rec.p, direction, rin.randstate());
 		srec.attenuation = albedo;
 		srec.is_specular = false;
-		srec.pdf_ptr = std::make_shared<CosPDF>(rec.normal);
+		srec.pdf_ptr = pdf_ptr;
+		srec.pdf_ptr->buildonb(rec.normal);//基于法线构造正交基
 		return true;
 	}
 
-	vec3  scattering_pdf(const Ray& rin, const HitRecord& rec, const Ray& scattered) const
+	__device__ vec3  scattering_pdf(Ray& rin, const HitRecord& rec, const Ray& scattered) const
 	{
 		vec3 v = -rin.direction().normalized();
 		vec3 n = rec.normal.normalized();
@@ -221,4 +234,5 @@ public:
 	color albedo;		//反照率
 	float roughness;	//粗糙度
 	vec3 f0;			//平面反射率
+	pdf* pdf_ptr;		//采样pdf
 };

@@ -1,7 +1,7 @@
 #pragma once
 #include "vec3.h"
 #include "iostream"
-#include "math.h"
+#include "utility.h"
 
 void Draw(std::ostream& out, color pixelColor, int sampleTimes)
 { 

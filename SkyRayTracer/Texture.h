@@ -4,17 +4,17 @@
 class Texture
 {
 public: 
-	virtual color value(float u, float v, const point3& p) const = 0;
+	__device__ virtual color value(float u, float v, const point3& p) const = 0;
 };
 
 class Solid :public Texture
 {
 public:
-	Solid() {}
-	Solid(color col) :colorval(col) {}
-	Solid(float r, float g, float b) :colorval(color(r,g,b)) {}
+	__device__ Solid() {}
+	__device__ Solid(color col) :colorval(col) {}
+	__device__ Solid(float r, float g, float b) :colorval(color(r,g,b)) {}
 
-	virtual color value(float u, float v, const point3& p) const override
+	__device__ virtual color value(float u, float v, const point3& p) const override
 	{
 		return colorval;
 	}
