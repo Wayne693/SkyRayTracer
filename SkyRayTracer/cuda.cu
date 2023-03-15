@@ -23,7 +23,7 @@ __device__ color raycolor(Ray& ray, const color& backGround, const HittableList*
 	//Ray r = ray;
 
 
-	for (int i = 0; i < 50; i++)
+	for (int i = 0; i < 100; i++)
 	{
 		HitRecord rec;
 		scatter_record srec;
@@ -32,7 +32,6 @@ __device__ color raycolor(Ray& ray, const color& backGround, const HittableList*
 		{
 			return n + m * backGround;
 		}
-		
 
 		color emitted = rec.mat_ptr->emitted(ray, rec, rec.u, rec.v, rec.p);
 		
@@ -40,12 +39,13 @@ __device__ color raycolor(Ray& ray, const color& backGround, const HittableList*
 		{
 			return n + m * emitted;
 		}
-		//debug(r.direction());
-//return rec.normal;
-		pdf* light_ptr = &HittablePDF(light, rec.p);
-		MixPDF p(light_ptr, srec.pdf_ptr);
-		auto scattered = Ray(rec.p, p.generate(ray.randstate()), ray.randstate());
+
+		pdf* light_pdf = &HittablePDF(light, rec.p);
+		pdf* cos_pdf = &CosPDF(rec.normal);
+		MixPDF p(light_pdf, cos_pdf);
 		
+		auto scattered = Ray(rec.p, p.generate(ray.randstate()), ray.randstate());
+
 		auto pdfval = p.value(scattered.direction());
 		auto ndotwi = dot(rec.normal.normalized(), scattered.direction().normalized());
 		
@@ -55,12 +55,6 @@ __device__ color raycolor(Ray& ray, const color& backGround, const HittableList*
 	}
 
 	return color(0, 0, 0);
-	
-	/*if ((*scene)->hit(ray, 0.01f, INF, rec))
-	{
-		return 0.5f * vec3(rec.normal.x() + 1.0f, rec.normal.y() + 1.0f, rec.normal.z() + 1.0f);
-	}
-	else return backGround;*/
 }
 
 __global__ void render(vec3* fb, curandState* cudaRandState, HittableList** scene, Camera** camera, int width, int height, int spp)
@@ -99,10 +93,13 @@ __global__ void render(vec3* fb, curandState* cudaRandState, HittableList** scen
 		//if (pixel_index == 10584)
 		//	printf("idx = %d:%d rdir = (%lf, %lf, %lf) %d\n", pixel_index, i, r.direction().x(), r.direction().y(), r.direction().z(), currentrs.d);
 
-		sumcolor += raycolor(r, vec3(0, 0, 0), scene, &light);
+		color cc = raycolor(r, vec3(0, 0, 0), scene, &light);
+		float max_sample_intensity = 50;
+		cc = vec3(thrust::min(max_sample_intensity, cc[0]), thrust::min(max_sample_intensity, cc[1]), thrust::min(max_sample_intensity, cc[2]));
+		sumcolor += cc;
 	}
 
-	
+	//debug(sumcolor);
 	fb[pixel_index] = sumcolor;
 }
 
@@ -115,6 +112,7 @@ __device__ void load_cornell_box(Hittable** objects, HittableList** list, Camera
 	auto light = new DiffuseLight(color(15, 15, 15));
 	auto gold = new CookTorrance(color(1, 0.71, 0.29), 0.05, vec3(1, 0.71, 0.29));
 	auto sliver = new CookTorrance(color(0.91, 0.92, 0.92), 0.1, vec3(0.91, 0.92, 0.92));
+	auto smoothsliver = new CookTorrance(color(0.91, 0.92, 0.92), 0.005, vec3(0.91, 0.92, 0.92));;
 
 	*objects = new RectYZ(0, 555, 0, 555, 555, green);
 	*(objects + 1) = new RectYZ(0, 555, 0, 555, 0, red);
@@ -123,7 +121,7 @@ __device__ void load_cornell_box(Hittable** objects, HittableList** list, Camera
 	*(objects + 4) = new RectXZ(0, 555, 0, 555, 555, white);
 	*(objects + 5) = new RectXY(0, 555, 0, 555, 555, white);
 
-	Hittable* box1 = new Box(point3(0, 0, 0), point3(165, 330, 165), white);
+	Hittable* box1 = new Box(point3(0, 0, 0), point3(165, 330, 165), smoothsliver);
 	box1 = new RotateY(box1, 15);
 	box1 = new Translate(box1, vec3(265, 0, 295));
 	*(objects + 6) = box1;

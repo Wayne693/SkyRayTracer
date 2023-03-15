@@ -2,6 +2,7 @@
 #include "vec3.h"
 #include "utility.h"
 #include "onb.h"
+#include "Camera.h"
 
 __device__ inline vec3 random_cosine_direction(curandState& rs) {
 	auto r1 = Random(rs);
@@ -12,7 +13,7 @@ __device__ inline vec3 random_cosine_direction(curandState& rs) {
 	auto phi = 2 * PI * r1;
 	auto x = cos(phi) * sqrt(r2);
 	auto y = sin(phi) * sqrt(r2);
-
+	//debug(vec3(x, y, z));
 	return vec3(x, y, z);
 }
 
@@ -29,7 +30,7 @@ public:
 
 class CosPDF : public pdf {
 public:
-	//__device__ CosPDF(const vec3& w) { uvw.build_from_w(w); }
+	__device__ CosPDF(const vec3& w) { uvw.build_from_w(w); }
 	__device__ CosPDF(){}
 
 	__device__ virtual void buildonb(const vec3& n) override
@@ -45,7 +46,9 @@ public:
 
 	__device__ virtual vec3 generate(curandState& rs) const override
 	{
-		return uvw.local(random_cosine_direction(rs));
+		vec3 dir = uvw.local(random_cosine_direction(rs));
+		//debug(dir);
+		return dir;
 	}
 
 public:

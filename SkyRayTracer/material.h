@@ -205,8 +205,9 @@ public:
 		srec.speculer_ray = Ray(rec.p, direction, rin.randstate());
 		srec.attenuation = albedo;
 		srec.is_specular = false;
-		srec.pdf_ptr = pdf_ptr;
-		srec.pdf_ptr->buildonb(rec.normal);//基于法线构造正交基
+		//pdf_ptr->buildonb(rec.normal);//基于法线构造正交基
+		//srec.pdf_ptr = pdf_ptr;
+		//srec.pdf_ptr->buildonb(rec.normal);
 		return true;
 	}
 

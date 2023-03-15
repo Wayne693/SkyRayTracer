@@ -2,6 +2,7 @@
 #include "hittable.h"
 #include "vec3.h"
 
+
 class RectXY :public Hittable
 {
 public:
@@ -96,7 +97,7 @@ public:
 		auto area = (x1 - x0) * (z1 - z0);
 		auto distance_squared = rec.t * rec.t * v.sqrMagnitude();
 		auto cosine = fabs(dot(v, rec.normal) / v.magnitude());
-
+		
 		return distance_squared / (cosine * area);
 	}
 

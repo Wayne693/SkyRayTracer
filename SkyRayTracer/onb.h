@@ -1,6 +1,6 @@
 #pragma once
 #include "vec3.h"
-
+#include "Camera.h"
 class onb
 {
 public:
@@ -31,6 +31,8 @@ public:
 		vec3 a = (fabs(w().x()) > 0.9) ? vec3(0, 1, 0) : vec3(1, 0, 0);
 		axis[1] = cross(w(), a).normalized();
 		axis[0] = cross(w(), v());
+
+		//debug(axis[0]);
 	}
 
 public:

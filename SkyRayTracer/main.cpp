@@ -162,7 +162,7 @@ int main()
 	const auto aspect_ratio = 1;
 	const int image_width = 600;
 	const int image_height = static_cast<int>(image_width / aspect_ratio);
-	const int sampleTimes = 10;
+	const int sampleTimes = 10000;
 	const int Step = 0;
 
 	//FrameBuffer
@@ -171,39 +171,6 @@ int main()
 
 	vec3* fb;
 	CheckCudaError(cudaMallocManaged((void**)&fb, fbsize));
-
-//	//Scene
-//	HittableList scene = cornell_box();
-//	color background = color(0, 0, 0);
-//	vec3 lookfrom = point3(278, 278, -800);
-//	vec3 lookat = vec3(278, 278, 0);
-//	float fov = 40.0;
-//	{
-////auto material_ground = std::make_shared<Lambertian>(color(0.8, 0.8, 0.0));
-//	////auto material_center = std::make_shared<Lambertian>(color(0.1, 0.2, 0.5));
-//	//auto material_left = std::make_shared<Dielectric>(1.5);
-//	//auto material_right = std::make_shared<Metal>(color(1, 0.86, 0.57), 1);
-//
-//	//scene.add(std::make_shared<Sphere>(point3(0.0, -100.5, -1.0), 100.0, material_ground));
-//	///*scene.add(std::make_shared<Sphere>(point3(0.0, 0.0, -1.0), 0.5, material_center));
-//	//scene.add(std::make_shared<Sphere>(point3(-1.0, 0.0, -1.0), 0.5, material_left));*/
-//	////scene.add(std::make_shared<Sphere>(point3(0.1, 0.0, -0.7), 0.2, material_left));
-//	//scene.add(std::make_shared<Sphere>(point3(0.0, 0.0, -1.5), 0.5, material_right));
-//	////scene = random_scene();
-//	//// Camera
-//	//point3 lookfrom(0, 0, 0);
-//	//point3 lookat(0, 0, -1);
-//	//vec3 vup(0, 1, 0);
-//	//auto dist_to_focus = 1.0;
-//	//auto aperture = 0.1;
-//	}
-//	
-//	vec3 vup(0, 1, 0);
-//	auto dist_to_focus = 10.0;
-//	Camera camera(lookfrom, lookat, vup, fov, aspect_ratio, 0, dist_to_focus);
-//
-//	auto lightmtl = std::make_shared<DiffuseLight>(color(15, 15, 15));
-//	auto light = std::make_shared<RectXZ>(213, 343, 227, 332, 554, lightmtl);
 
 	//Render
 	CudaRender(fb, image_width, image_height, sampleTimes);
