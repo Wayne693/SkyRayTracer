@@ -5,13 +5,16 @@
 #include "Texture.h"
 #include "onb.h"
 #include "pdf.h"
+#include "thrust/extrema.h"
 
 struct scatter_record
 {
 	Ray speculer_ray;
 	bool is_specular;
+	bool is_dielectric;
 	color attenuation;
 	pdf* pdf_ptr;
+	onb curonb;
 };
 
 class Material
@@ -81,43 +84,51 @@ public:
 //	color albedo;
 //	float fuzz;
 //};
-//
-//class Dielectric :public Material
-//{
-//public:
-//	Dielectric(float refractionIndex) :ir(refractionIndex) {}
-//
-//	virtual bool scatter(const Ray& rin, const HitRecord& rec, scatter_record& srec) const override
-//	{
-//		srec.attenuation = color(1, 1, 1);
-//		float refractionRatio = rec.front_face ? (1.f / ir) : ir;
-//
-//		vec3 dir = rin.direction().normalized();
-//		float cost = fmin(dot(-dir, rec.normal), 1.0);
-//		float sint = sqrt(1.f - cost * cost);
-//
-//		bool cantRefract = refractionRatio * sint > 1.f;
-//		if (cantRefract || reflectance(cost,refractionRatio) > Random())
-//			dir = Reflect(dir, rec.normal);
-//		else dir = Refract(dir, rec.normal, refractionRatio);
-//
-//
-//		srec.speculer_ray = Ray(rec.p, dir);
-//		srec.is_specular = false;
-//		srec.pdf_ptr = 0;
-//		return true;
-//	}
-//private:
-//	float ir;
-//
-//private:
-//	static double reflectance(double cosine, double ref_idx) {
-//		// Use Schlick's approximation for reflectance.
-//		auto r0 = (1 - ref_idx) / (1 + ref_idx);
-//		r0 = r0 * r0;
-//		return r0 + (1 - r0) * pow((1 - cosine), 5);
-//	}
-//};
+
+class Dielectric :public Material
+{
+public:
+	__device__ Dielectric(float refractionIndex) :ir(refractionIndex) {}
+
+	__device__ virtual bool scatter(Ray& rin, const HitRecord& rec, scatter_record& srec) const override
+	{
+ 		srec.attenuation = color(1.f, 1.f, 1.f);
+		float refractionRatio = rec.front_face ? (1.f / ir) : ir;
+
+		//if (!rec.front_face)
+		//{
+		//	/*printf("HahHahHa\n");*/
+		//	debug(rin.direction());
+		//}
+		//printf("ff = %d\n", rec.front_face);
+		vec3 dir = rin.direction().normalized();
+		float cost = thrust::min(dot(-dir, rec.normal), 1.f);
+		float sint = sqrt(1.f - cost * cost);
+
+		bool cantRefract = refractionRatio * sint > 1.f;
+		if (cantRefract || reflectance(cost,refractionRatio) > Random(rin.randstate()))
+			dir = Reflect(dir, rec.normal);
+		else 
+		dir = Refract(dir, rec.normal, refractionRatio);
+
+
+		srec.speculer_ray = Ray(rec.p, dir, rin.randstate());
+		srec.is_specular = false;
+		srec.is_dielectric = true;
+		srec.pdf_ptr = 0;
+		return true;
+	}
+private:
+	float ir;
+
+private:
+	__device__ static double reflectance(double cosine, double ref_idx) {
+		// Use Schlick's approximation for reflectance.
+		auto r0 = (1 - ref_idx) / (1 + ref_idx);
+		r0 = r0 * r0;
+		return r0 + (1 - r0) * pow((1 - cosine), 5);
+	}
+};
 
 class DiffuseLight :public Material
 {
@@ -183,16 +194,16 @@ __device__ inline vec3 FresnelSchlick(vec3 n, vec3 v, vec3 f0)
 }
 
 
-class CookTorrance :public Material
+class BRDF :public Material
 {
 public:
-	__device__ CookTorrance(color a, float r):albedo(a), roughness(r)
+	__device__ BRDF(color a, float r):albedo(a), roughness(r)
 	{
 		f0 = vec3(0.04, 0.04, 0.04);
 		pdf_ptr = new CosPDF();
 	}
 
-	__device__ CookTorrance(color a, float r, vec3 f):albedo(a),roughness(r),f0(f)
+	__device__ BRDF(color a, float r, vec3 f):albedo(a),roughness(r),f0(f)
 	{
 		pdf_ptr = new CosPDF();
 	}
@@ -201,12 +212,14 @@ public:
 	{
 		onb uvw;
 		uvw.build_from_w(rec.normal);
-		auto direction = uvw.local(random_cosine_direction(rin.randstate()));
-		srec.speculer_ray = Ray(rec.p, direction, rin.randstate());
+		//auto direction = uvw.local(random_cosine_direction(rin.randstate()));
+		//srec.speculer_ray = Ray(rec.p, direction, rin.randstate());
 		srec.attenuation = albedo;
 		srec.is_specular = false;
 		//pdf_ptr->buildonb(rec.normal);//基于法线构造正交基
-		//srec.pdf_ptr = pdf_ptr;
+		srec.pdf_ptr = pdf_ptr;
+		srec.curonb = uvw;
+		srec.is_dielectric = false;
 		//srec.pdf_ptr->buildonb(rec.normal);
 		return true;
 	}
@@ -236,4 +249,156 @@ public:
 	float roughness;	//粗糙度
 	vec3 f0;			//平面反射率
 	pdf* pdf_ptr;		//采样pdf
+};
+
+//法线、入射光线、入射电介质密度，出射电介质密度
+__device__ inline float Fresnel(vec3 n, vec3 wi, float miui, float miu0)
+{
+	auto c = fabs(dot(wi, n));
+	float sqrg = (miu0 * miu0 / miui / miui) - 1 + c * c;
+
+	if (sqrg < 0)//如果g为虚数，则F=1，全反射
+	{
+		return 1;
+	}
+
+	auto g = std::sqrt(sqrg);
+
+	auto gpc = g + c;
+	auto gmc = g - c;
+	auto cgm1 = c * gpc - 1;
+	auto cmm1 = c * gmc - 1;
+
+	return (gmc * gmc / (2 * gpc * gpc)) * (1 + (cgm1 * cgm1 / cmm1 / cmm1));
+}
+
+__device__ inline float GGXNDF(float r, vec3 h, vec3 n)
+{
+	auto nom = r * r * (dot(h, n) > 0 ? 1 : 0);
+	auto costh = dot(h.normalized(), n.normalized());
+	auto cos2th = costh * costh;
+	auto cos4th = cos2th * cos2th;
+	auto p = r * r + (1 - cos2th) / cos2th;
+	auto p2 = p * p;
+
+	auto denom = PI * cos4th * p2;
+	//debug(dot(h, n));
+	return nom / denom;
+}
+
+__device__ inline float GGXG1(float r, vec3 h, vec3 w, vec3 n)
+{
+	auto vdotm = dot(w, h);
+	auto vdotn = dot(w, n);
+
+	auto costh = dot(w.normalized(), n.normalized());
+	auto cos2th = costh * costh;
+	auto tanth = (1 - cos2th) / cos2th;
+
+	auto nom = (vdotm / vdotn) > 0 ? 2 : 0;
+	auto p = 1 + r * r * tanth * tanth;
+	auto denom = 1 + sqrt(p);
+
+	return nom / denom;
+
+}
+
+__device__ inline float GGXGeo(float r, vec3 h, vec3 wo, vec3 wi, vec3 n)
+{
+	return GGXG1(r, h, wo, n) * GGXG1(r, h, wi, n);
+}
+
+
+class BTDF :public Material
+{
+public:
+	__device__ BTDF(color a, float r) :albedo(a), roughness(r)
+	{
+		//f0 = vec3(0.04, 0.04, 0.04);
+		miu = 1.5f;
+		pdf_ptr = new SpherePDF;
+	}
+
+	__device__ BTDF(color a, float r, float m) :albedo(a), roughness(r), miu(m)
+	{
+		//f0 = vec3(0.04, 0.04, 0.04);
+		pdf_ptr = new SpherePDF;
+	}
+
+	__device__ virtual bool scatter(Ray& rin, const HitRecord& rec, scatter_record& srec) const
+	{
+		onb uvw;
+		uvw.build_from_w(rec.normal);
+
+		//auto direction = uvw.local(RandomInUnitSphere(rin.randstate()));
+	/*	if (dot(direction, rec.normal) < 0)
+		{
+			debug(direction);
+		}*/
+		//srec.speculer_ray = Ray(rec.p, direction, rin.randstate());
+		srec.attenuation = albedo;
+		srec.is_specular = false;
+		//pdf_ptr->buildonb(rec.normal);//基于法线构造正交基
+		//srec.pdf_ptr = pdf_ptr;
+		//srec.pdf_ptr->buildonb(rec.normal);
+		srec.pdf_ptr = pdf_ptr;
+		srec.curonb = uvw;
+		return true;
+	}
+
+	__device__ vec3  scattering_pdf(Ray& rin, const HitRecord& rec, const Ray& scattered) const
+	{
+		vec3 wo = -rin.direction();
+		vec3 n = rec.normal;
+		vec3 wi = scattered.direction();
+
+		float miuo = rec.front_face ? 1.f : miu;
+		float miui = (miuo == 1.f) ? miu : 1.f;
+
+		//if (!rec.front_face && rin.direction().x() == rin.direction().x())
+		//{
+		//	debug(rin.direction());
+		//}
+
+		printf("miui = %lf miuo = %lf %d\n", miui, miuo, rec.front_face);
+		vec3 ht = -(miuo * wo + miui * wi);//(v + l).normalized();
+
+		float k = (roughness + 1) * (roughness + 1) / 8;
+		float F = Fresnel(n, wi, miui, miuo);
+		float D = GGXNDF(roughness, ht, n);
+		float G = GGXGeo(roughness, ht, wo, wi, n);
+		
+		auto wodotn = dot(wo, n);
+		auto widotn = dot(wi, n);
+		auto widotht = dot(wi, ht);
+		auto wodotht = dot(wo, ht);
+		
+		auto nom = miuo * miuo * (vec3(1, 1, 1) - vec3(F, F, F)) * G * D;
+		auto tmp = miui * widotht + miuo * wodotht;
+		auto denom = tmp * tmp;
+		
+
+		auto rt = /*albedo/PI +*/ (fabs(widotht) * fabs(wodotht) / fabs(widotn) / fabs(wodotn)) * (nom / denom);
+		//debug(rt);
+		
+		/*if (miuo == 0.15f)
+		{
+			debug(miuo);
+		}*/
+		//debug(G);
+		return rt;
+		/*color diffuse = (vec3(1, 1, 1) - F) * albedo / PI;
+
+		color specular;
+		auto D = NDFGGX(n, ht, roughness);
+		auto G = GeometrySmith(n, wo, wi, k);
+
+		*/
+	}
+public:
+	color albedo;		//反照率
+	float roughness;	//粗糙度
+	//vec3 f0;			//平面反射率
+	pdf* pdf_ptr;		//采样pdf
+	float miu;			//电介质密度
 };

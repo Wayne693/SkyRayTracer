@@ -77,7 +77,7 @@ public:
 
 	__device__ inline static vec3 random(float min, float max, curandState& rs)
 	{
-		printf("%lf %lf %lf\n", Random(min, max, rs), Random(min, max, rs), Random(min, max, rs));
+		//printf("%lf %lf %lf\n", Random(min, max, rs), Random(min, max, rs), Random(min, max, rs));
 		return vec3(Random(min, max, rs), Random(min, max, rs), Random(min, max, rs));
 	}
 };
@@ -136,14 +136,24 @@ __hd__ inline vec3 cross(const vec3& va, const vec3& vb)
 
 __device__ inline vec3 RandomInUnitSphere(curandState& rs)
 {
-	while (true)
-	{
+	//while (true)
+	//{
 		auto p = vec3::random(-1, 1, rs);
-		if (p.sqrMagnitude() >= 1)
-			continue;
-		return p;
-	}
+		//if (p.sqrMagnitude() >= 1)
+		//	continue;
+		return p.normalized();
+	//}
 }
+
+//__device__ inline vec3 RandomOnNagHemisphere(vec3 normal, curandState& rs)
+//{
+//	auto v = RandomInUnitSphere(rs);
+//	if (dot(v, normal) > 0.f)
+//	{
+//		return v;
+//	}
+//	return -v;
+//}
 
 __device__ inline vec3 RandomInHemisphere(vec3 normal, curandState& rs)
 {
@@ -155,12 +165,12 @@ __device__ inline vec3 RandomInHemisphere(vec3 normal, curandState& rs)
 	return -v;
 }
 
-__hd__ inline vec3 Reflect(const vec3& v, const vec3& n)
+__device__ inline vec3 Reflect(const vec3& v, const vec3& n)
 {
 	return v - 2 * dot(v, n) * n;
 }
 
-__hd__ inline vec3 Refract(const vec3& uv, const vec3& n, float factor)
+__device__ inline vec3 Refract(const vec3& uv, const vec3& n, float factor)
 {
 	auto cost = fmin(dot(-uv, n), 1.f);
 	vec3 routPrep = factor * (uv + cost * n);

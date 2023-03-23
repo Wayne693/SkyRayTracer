@@ -37,7 +37,7 @@ public:
 
 	__device__ virtual bool hit(Ray& r, float mint, float maxt, HitRecord& rec) const override
 	{
-		//printf("okok\n");
+		//printf("--Box** ray origin = %lf %lf %lf threadId = %d\n", r.origin().x(), r.origin().y(), r.origin().z(), rec.threadId);
 		return sides.hit(r, mint, maxt, rec);
 	}
 	__device__ virtual bool boundingbox(float t0, float t1, Aabb& outputBox) const override
@@ -51,8 +51,3 @@ public:
 	vec3 boxMax;
 	HittableList sides;
 };
-
-//__device__ Box::Box(const point3& p0, const point3& p1, Material* ptr)
-
-
-//bool Box::hit(const Ray& r, float mint, float maxt, HitRecord& rec) const

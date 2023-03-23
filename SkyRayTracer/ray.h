@@ -1,6 +1,6 @@
 #pragma once
 #include "vec3.h"
-
+//#include "camera.h"
 class Ray
 {
 public:
@@ -13,7 +13,7 @@ public:
 	__device__ curandState& randstate() { return rs; }
 
 	//P(t) = A + tb;
-	__hd__ point3 at(double t) const {
+	__device__  point3 at(double t) const {
 		return orig + t * dir;
 	}
 

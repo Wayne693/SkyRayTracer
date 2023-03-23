@@ -1,7 +1,7 @@
 #pragma once
 #include "ray.h"
 #include "aabb.h"
-
+#include "camera.h"
 class Material;
 
 struct HitRecord
@@ -13,6 +13,7 @@ struct HitRecord
 	bool front_face;
 	float u;
 	float v;
+	int threadId;
 
 	__device__ inline void set_face_normal(const Ray& r, const vec3& outwardNormal)
 	{
@@ -150,7 +151,3 @@ public:
 	Aabb bbox;
 };
 
-//__device__ RotateY::RotateY(Hittable* p, float angle) 
-
-
-//__device__ bool RotateY::hit(const Ray& r, float t_min, float t_max, HitRecord& rec) const 

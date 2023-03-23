@@ -5,7 +5,10 @@ class onb
 {
 public:
 	__device__ onb(){}
-
+	__device__ onb(vec3 normal)
+	{
+		build_from_w(normal);
+	}
 	__device__ inline vec3 operator[](int i) const
 	{
 		return axis[i];
@@ -31,8 +34,11 @@ public:
 		vec3 a = (fabs(w().x()) > 0.9) ? vec3(0, 1, 0) : vec3(1, 0, 0);
 		axis[1] = cross(w(), a).normalized();
 		axis[0] = cross(w(), v());
+		//if (axis[0].x() != axis[0].x())
+		//{
+		//	debug(axis[0]);
+		//}
 
-		//debug(axis[0]);
 	}
 
 public:

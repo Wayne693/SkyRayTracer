@@ -14,50 +14,79 @@
 __constant__ float INF;
 __constant__ float PI;
 
-__device__ color raycolor(Ray& ray, const color& backGround, const HittableList** scene, Hittable* light)
+//__device__ void change(HitRecord& rec, int threadId)
+//{
+//	rec.u = threadId;
+//	printf("ff = %d  %f\n", threadId, rec.u);
+//}
+
+
+__device__ color raycolor(Ray& ray, const color& backGround, const HittableList** scene, Hittable* light, int threadId)
 {
 	//color finalcolor = backGround;
 	color n = vec3(0, 0, 0);
 	color m = vec3(1, 1, 1);
 
-	//Ray r = ray;
+	Ray r = ray;
 
-
+	
 	for (int i = 0; i < 100; i++)
 	{
 		HitRecord rec;
+		rec.threadId = threadId;
+
 		scatter_record srec;
 		color curcolor;
-		if (!(*scene)->hit(ray, 0.01f, INF, rec))
+		//debug(r.origin());
+		//printf("**front** recaddress = %f id = %d\n", rec.u, threadId);
+		//rec.u = 0;
+		//change(rec, threadId);
+		//printf("__ff = %d  %f\n", threadId, rec.u);
+
+		if (!(*scene)->hit(r, 0.01f, INF, rec))
 		{
 			return n + m * backGround;
 		}
+		//printf("rec_address = %p ff = %d matptr = %p u = %lf v = %lf threadId = %d\n", &rec, rec.front_face, rec.mat_ptr, rec.u, rec.v, threadId);
+		//printf("***p = (%lf %lf %lf) t = %lf ff = %d\n", rec.p.x(), rec.p.y(), rec.p.z(), rec.t, rec.front_face);
 
-		color emitted = rec.mat_ptr->emitted(ray, rec, rec.u, rec.v, rec.p);
+//debug(rec.front_face);
 		
-		if (!rec.mat_ptr->scatter(ray, rec, srec))
+		color emitted = rec.mat_ptr->emitted(r, rec, rec.u, rec.v, rec.p);
+		
+		if (!rec.mat_ptr->scatter(r, rec, srec))
 		{
 			return n + m * emitted;
 		}
 
-		pdf* light_pdf = &HittablePDF(light, rec.p);
-		pdf* cos_pdf = &CosPDF(rec.normal);
-		MixPDF p(light_pdf, cos_pdf);
 		
-		auto scattered = Ray(rec.p, p.generate(ray.randstate()), ray.randstate());
+		if (srec.is_dielectric)
+		{
+			//n = n + m * emitted;
+			//m = m ;
+			r = srec.speculer_ray;
+			continue;
+		}
 
-		auto pdfval = p.value(scattered.direction());
+		pdf* light_pdf = &HittablePDF(light, rec.p);
+		pdf* mtl_pdf = srec.pdf_ptr;
+		MixPDF p(light_pdf, mtl_pdf);
+		
+		auto scattered = Ray(rec.p, p.generate(srec.curonb, r.randstate()), r.randstate());
+
+
+		auto pdfval = p.value(srec.curonb, scattered.direction());
 		auto ndotwi = dot(rec.normal.normalized(), scattered.direction().normalized());
 		
 		n = n + m * emitted;
-		m = m * rec.mat_ptr->scattering_pdf(ray, rec, scattered) * thrust::max(0.f, ndotwi) / pdfval;
-		ray = scattered;
+		m = m * rec.mat_ptr->scattering_pdf(r, rec, scattered) * thrust::max(0.f, ndotwi) / pdfval;
+		r = scattered;
 	}
 
 	return color(0, 0, 0);
 }
 
-__global__ void render(vec3* fb, curandState* cudaRandState, HittableList** scene, Camera** camera, int width, int height, int spp)
+__global__ void render(vec3* fb, HittableList** scene, Camera** camera, int width, int height, int spp)
 {
 	int x = blockIdx.x * blockDim.x + threadIdx.x;
 	int y = blockIdx.y * blockDim.y + threadIdx.y;
@@ -70,30 +99,27 @@ __global__ void render(vec3* fb, curandState* cudaRandState, HittableList** scen
 	int pixel_index = y * width + x;
 	
 
-	//curandState currentrs;
+	curandState currentrs;
 	
 
-	curand_init(2023, pixel_index, 0, &cudaRandState[pixel_index]);
-	//printf("%lf %lf %lf\n", (*camera)->origin.x(), (*camera)->origin.y(), (*camera)->origin.z());
-	//printf("%d\n", (*scene)->length);
+	curand_init(19780511, pixel_index, 0, &currentrs);
 	
-	//printf("%lf %lf %lf %lf %lf\n", r.direction().x(), r.direction().y(), r.direction().z(), u, v);
 	auto lm = new DiffuseLight(color(15, 15, 15));
 	auto light = RectXZ(213, 343, 227, 332, 554, lm);
 	
 	color sumcolor = vec3(0, 0, 0);
 	for (int i = 0; i < spp; i++)
 	{
-		float offset_x = Random(cudaRandState[pixel_index]);
-		float offset_y = Random(cudaRandState[pixel_index]);
+		float offset_x = Random(currentrs);
+		float offset_y = Random(currentrs);
 		//printf("%d %lf %lf\n", pixel_index, offset_x, offset_y);
 		float u = float(x + offset_x) / float(width);
 		float v = float(y + offset_y) / float(height);
-		Ray r = (*camera)->GetRay(u, v, cudaRandState[pixel_index]);
+		Ray r = (*camera)->GetRay(u, v, currentrs);
 		//if (pixel_index == 10584)
 		//	printf("idx = %d:%d rdir = (%lf, %lf, %lf) %d\n", pixel_index, i, r.direction().x(), r.direction().y(), r.direction().z(), currentrs.d);
 
-		color cc = raycolor(r, vec3(0, 0, 0), scene, &light);
+		color cc = raycolor(r, color(0.5, 0.7, 1.0), scene, &light, pixel_index);
 		float max_sample_intensity = 50;
 		cc = vec3(thrust::min(max_sample_intensity, cc[0]), thrust::min(max_sample_intensity, cc[1]), thrust::min(max_sample_intensity, cc[2]));
 		sumcolor += cc;
@@ -106,13 +132,15 @@ __global__ void render(vec3* fb, curandState* cudaRandState, HittableList** scen
 __device__ void load_cornell_box(Hittable** objects, HittableList** list, Camera** camera)
 {
 	//objects
-	auto green = new CookTorrance(color(.12, .45, .15), 0.5);
-	auto red = new CookTorrance(color(.65, .05, .05), 0.5);
-	auto white = new CookTorrance(color(.73, .73, .73), 0.5);
+	auto green = new BRDF(color(.12, .45, .15), 0.5);
+	auto red = new BRDF(color(.65, .05, .05), 0.5);
+	auto white = new BRDF(color(.73, .73, .73), 0.5);
 	auto light = new DiffuseLight(color(15, 15, 15));
-	auto gold = new CookTorrance(color(1, 0.71, 0.29), 0.05, vec3(1, 0.71, 0.29));
-	auto sliver = new CookTorrance(color(0.91, 0.92, 0.92), 0.1, vec3(0.91, 0.92, 0.92));
-	auto smoothsliver = new CookTorrance(color(0.91, 0.92, 0.92), 0.005, vec3(0.91, 0.92, 0.92));;
+	auto gold = new BRDF(color(1, 0.71, 0.29), 0.05, vec3(1, 0.71, 0.29));
+	auto sliver = new BRDF(color(0.91, 0.92, 0.92), 0.1, vec3(0.91, 0.92, 0.92));
+	auto smoothsliver = new BRDF(color(0.91, 0.92, 0.92), 0.005, vec3(0.91, 0.92, 0.92));
+	auto glass = new BTDF(color(0.8, 0.8, 0.8), 0.3, 1.5);
+	auto glass1 = new Dielectric(1.4f);
 
 	*objects = new RectYZ(0, 555, 0, 555, 555, green);
 	*(objects + 1) = new RectYZ(0, 555, 0, 555, 0, red);
@@ -121,7 +149,7 @@ __device__ void load_cornell_box(Hittable** objects, HittableList** list, Camera
 	*(objects + 4) = new RectXZ(0, 555, 0, 555, 555, white);
 	*(objects + 5) = new RectXY(0, 555, 0, 555, 555, white);
 
-	Hittable* box1 = new Box(point3(0, 0, 0), point3(165, 330, 165), smoothsliver);
+	Hittable* box1 = new Box(point3(0, 0, 0), point3(165, 330, 165), gold);
 	box1 = new RotateY(box1, 15);
 	box1 = new Translate(box1, vec3(265, 0, 295));
 	*(objects + 6) = box1;
@@ -131,9 +159,13 @@ __device__ void load_cornell_box(Hittable** objects, HittableList** list, Camera
 	box2 = new Translate(box2, vec3(130, 0, 65));
 	*(objects + 7) = box2;
 
-	Hittable* sphere1 = new Sphere(point3(0, 0, 0), 75, sliver);
+	Hittable* sphere1 = new Sphere(point3(0, 0, 0), 75, glass1);
 	sphere1 = new Translate(sphere1, vec3(250, 275, 245));
 	*(objects + 8) = sphere1;
+
+	/*Hittable* box3 = new Box(point3(0, 0, 0), point3(75, 75, 75), glass1);
+	box3 = new Translate(box3, vec3(250, 275, 245));
+	*(objects) = box3;*/
 
 	//list
 	*list = new HittableList(objects, 9);/////////////9
@@ -177,7 +209,7 @@ void CudaRender(vec3* fb, int width, int height, int sampleTimes)
 	Hittable** cudaList;
 	HittableList** cudaObjects;
 	Camera** cudaCamera;
-	curandState* cudaRandState;
+	//curandState* cudaRandState;
 
 	// Load constant
 	float inf = std::numeric_limits<float>::infinity();
@@ -195,7 +227,7 @@ void CudaRender(vec3* fb, int width, int height, int sampleTimes)
 	CheckCudaError(cudaGetLastError());
 
 	//Load rand state
-	CheckCudaError(cudaMalloc((void**)&cudaRandState, width * height * sizeof(curandState)));
+	//CheckCudaError(cudaMalloc((void**)&cudaRandState, width * height * sizeof(curandState)));
 	
 	//Rander
 	int blockx = 16;
@@ -204,7 +236,7 @@ void CudaRender(vec3* fb, int width, int height, int sampleTimes)
 	dim3 block(blockx, blocky);
 	dim3 grid(width / blockx + 1, height / blocky + 1);
 
-	render << <grid, block >> > (fb, cudaRandState, cudaObjects, cudaCamera, width, height, sampleTimes);
+	render << <grid, block >> > (fb, cudaObjects, cudaCamera, width, height, sampleTimes);
 	CheckCudaError(cudaDeviceSynchronize());
 	CheckCudaError(cudaGetLastError());
 	
