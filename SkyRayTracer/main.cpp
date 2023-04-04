@@ -19,7 +19,7 @@ int main()
 	const auto aspect_ratio = 1;
 	const int image_width = 600;
 	const int image_height = static_cast<int>(image_width / aspect_ratio);
-	const int sampleTimes = 1024 * 4 * 4;
+	const int sampleTimes = 128;
 	const int Step = 0;
 
 	//FrameBuffer

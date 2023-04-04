@@ -13,6 +13,7 @@ struct scatter_record
 	bool is_specular;
 	bool is_dielectric;
 	color attenuation;
+	float roughness;
 	pdf* pdf_ptr;
 	onb curonb;
 };
@@ -25,7 +26,7 @@ public:
 		return false;
 	}
 
-	__device__ virtual color scattering_pdf(Ray& rin, const HitRecord& rec, const Ray& scattered) const
+	__device__ virtual color scattering_pdf(Ray& rin, const HitRecord& rec, Ray& scattered) const
 	{
 		return vec3(0, 0, 0);
 	}
@@ -88,7 +89,7 @@ public:
 class Dielectric :public Material
 {
 public:
-	__device__ Dielectric(float refractionIndex) :ir(refractionIndex) {}
+	__device__ Dielectric(float refractionIndex) :ir(refractionIndex) { }
 
 	__device__ virtual bool scatter(Ray& rin, const HitRecord& rec, scatter_record& srec) const override
 	{
@@ -101,7 +102,8 @@ public:
 		//	debug(rin.direction());
 		//}
 		//printf("ff = %d\n", rec.front_face);
-		vec3 dir = rin.direction().normalized();
+		vec3 dir = rin.direction();
+		dir.normalize();
 		float cost = thrust::min(dot(-dir, rec.normal), 1.f);
 		float sint = sqrt(1.f - cost * cost);
 
@@ -224,25 +226,25 @@ public:
 		return true;
 	}
 
-	__device__ vec3  scattering_pdf(Ray& rin, const HitRecord& rec, const Ray& scattered) const
+	__device__ vec3  scattering_pdf(Ray& rin, const HitRecord& rec, Ray& scattered) const
 	{
-		vec3 v = -rin.direction().normalized();
+		vec3 wo = -rin.direction().normalized();
 		vec3 n = rec.normal.normalized();
-		vec3 l = scattered.direction().normalized();
-		vec3 h = (v + l).normalized();
+		vec3 wi = scattered.direction().normalized();
+		vec3 h = (wo + wi).normalized();
 
 		float k = (roughness + 1) * (roughness + 1) / 8;
-		vec3 F = FresnelSchlick(n, v, f0);
+		vec3 F = FresnelSchlick(n, wi, f0);
 		color diffuse = (vec3(1, 1, 1) - F) * albedo / PI;
 
 		color specular;
 		auto D = NDFGGX(n, h, roughness);
-		auto G = GeometrySmith(n, v, l, k);
+		auto G = GeometrySmith(n, wo, wi, k);
 
-		auto vdotn = dot(v, n);
-		auto ldotn = dot(l, n);
-
-		return diffuse + F * D * G / (4 * vdotn * ldotn);
+		auto vdotn = dot(wo, n);
+		auto ldotn = dot(wi, n);
+		auto rt = diffuse + F * D * G / (4 * vdotn * ldotn);
+		return rt * thrust::max(0.f, dot(wi, n));
 	}
 public:
 	color albedo;		//反照率
@@ -252,9 +254,9 @@ public:
 };
 
 //法线、入射光线、入射电介质密度，出射电介质密度
-__device__ inline float Fresnel(vec3 n, vec3 wi, float miui, float miu0)
+__device__ inline float Fresnel(vec3 h, vec3 wi, float miui, float miu0)
 {
-	auto c = fabs(dot(wi, n));
+	auto c = fabs(dot(wi, h));
 	float sqrg = (miu0 * miu0 / miui / miui) - 1 + c * c;
 
 	if (sqrg < 0)//如果g为虚数，则F=1，全反射
@@ -267,9 +269,9 @@ __device__ inline float Fresnel(vec3 n, vec3 wi, float miui, float miu0)
 	auto gpc = g + c;
 	auto gmc = g - c;
 	auto cgm1 = c * gpc - 1;
-	auto cmm1 = c * gmc - 1;
+	auto cmp1 = c * gmc + 1;
 
-	return (gmc * gmc / (2 * gpc * gpc)) * (1 + (cgm1 * cgm1 / cmm1 / cmm1));
+	return (gmc * gmc / (2 * gpc * gpc)) * (1 + (cgm1 * cgm1 / (cmp1 * cmp1)));
 }
 
 __device__ inline float GGXNDF(float r, vec3 h, vec3 n)
@@ -293,10 +295,10 @@ __device__ inline float GGXG1(float r, vec3 h, vec3 w, vec3 n)
 
 	auto costh = dot(w.normalized(), n.normalized());
 	auto cos2th = costh * costh;
-	auto tanth = (1 - cos2th) / cos2th;
+	auto tan2th = (1 - cos2th) / cos2th;
 
 	auto nom = (vdotm / vdotn) > 0 ? 2 : 0;
-	auto p = 1 + r * r * tanth * tanth;
+	auto p = 1 + r * r * tan2th;
 	auto denom = 1 + sqrt(p);
 
 	return nom / denom;
@@ -316,13 +318,13 @@ public:
 	{
 		//f0 = vec3(0.04, 0.04, 0.04);
 		miu = 1.5f;
-		pdf_ptr = new SpherePDF;
+		pdf_ptr = new NDFPDF;
 	}
 
 	__device__ BTDF(color a, float r, float m) :albedo(a), roughness(r), miu(m)
 	{
 		//f0 = vec3(0.04, 0.04, 0.04);
-		pdf_ptr = new SpherePDF;
+		pdf_ptr = new NDFPDF;
 	}
 
 	__device__ virtual bool scatter(Ray& rin, const HitRecord& rec, scatter_record& srec) const
@@ -338,62 +340,67 @@ public:
 		//srec.speculer_ray = Ray(rec.p, direction, rin.randstate());
 		srec.attenuation = albedo;
 		srec.is_specular = false;
+		srec.is_dielectric = true;
 		//pdf_ptr->buildonb(rec.normal);//基于法线构造正交基
 		//srec.pdf_ptr = pdf_ptr;
 		//srec.pdf_ptr->buildonb(rec.normal);
 		srec.pdf_ptr = pdf_ptr;
 		srec.curonb = uvw;
+		srec.roughness = roughness;
 		return true;
 	}
 
-	__device__ vec3  scattering_pdf(Ray& rin, const HitRecord& rec, const Ray& scattered) const
+	__device__ vec3  scattering_pdf(Ray& rin, const HitRecord& rec, Ray& scattered) const//这里拿到的scattered的direction是h
 	{
-		vec3 wo = -rin.direction();
-		vec3 n = rec.normal;
-		vec3 wi = scattered.direction();
+		vec3 wo = -rin.direction().normalized();
+		vec3 h = scattered.direction().normalized();
+		vec3 n = rec.normal.normalized();
 
 		float miuo = rec.front_face ? 1.f : miu;
 		float miui = (miuo == 1.f) ? miu : 1.f;
+		//vec3 wi = -(h + miuo * wo) / miui;
+		//wi.normalize();
+		vec3 wi = Refract(-wo, h, miuo / miui);
+		wi.normalize();
 
+		//printf("wo = (%lf,%lf,%lf) h = (%lf,%lf,%lf) wwi = (%lf,%lf,%lf) wi = (%lf,%lf,%lf) miuo = %lf\n", wo.x(), wo.y(), wo.z(), h.x(), h.y(), h.z(), wwi.x(), wwi.y(), wwi.z(), wi.x(), wi.y(), wi.z(), miuo);
+
+		Ray nextr = Ray(rec.p, wi, scattered.randstate());
+		scattered = nextr;
 		//if (!rec.front_face && rin.direction().x() == rin.direction().x())
 		//{
 		//	debug(rin.direction());
 		//}
+		return vec3(1, 1, 1);
+		//printf("miui = %lf miuo = %lf %d\n", miui, miuo, rec.front_face);
+		//vec3 ht = -(miuo * wo + miui * wi);//(v + l).normalized();
 
-		printf("miui = %lf miuo = %lf %d\n", miui, miuo, rec.front_face);
-		vec3 ht = -(miuo * wo + miui * wi);//(v + l).normalized();
-
-		float k = (roughness + 1) * (roughness + 1) / 8;
-		float F = Fresnel(n, wi, miui, miuo);
-		float D = GGXNDF(roughness, ht, n);
-		float G = GGXGeo(roughness, ht, wo, wi, n);
+		//float k = (roughness + 1) * (roughness + 1) / 8;
+		float F = Fresnel(h, wi, miui, miuo);
+		//vec3 F = FresnelSchlick(-h, wi, vec3(0.04, 0.04, 0.04));
+		float D = GGXNDF(roughness, h, n);
+		//float D = NDFGGX(n, h, roughness);
+		float G = GGXGeo(roughness, h, wo, wi, n);
 		
 		auto wodotn = dot(wo, n);
 		auto widotn = dot(wi, n);
-		auto widotht = dot(wi, ht);
-		auto wodotht = dot(wo, ht);
+		auto widotht = dot(wi, h);
+		auto wodotht = dot(wo, h);
 		
 		auto nom = miuo * miuo * (vec3(1, 1, 1) - vec3(F, F, F)) * G * D;
 		auto tmp = miui * widotht + miuo * wodotht;
 		auto denom = tmp * tmp;
 		
-
-		auto rt = /*albedo/PI +*/ (fabs(widotht) * fabs(wodotht) / fabs(widotn) / fabs(wodotn)) * (nom / denom);
-		//debug(rt);
-		
+		auto rt = (fabs(widotht) * fabs(wodotht) / fabs(widotn) / fabs(wodotn)) * (nom / denom);
+		//printf("rt = %lf %lf %lf denom = %lf %lf %lf\n", rt.x(), rt.y(), rt.z(), denom, widotht, wodotht);
+		//debug(tmp);
 		/*if (miuo == 0.15f)
 		{
 			debug(miuo);
 		}*/
 		//debug(G);
-		return rt;
-		/*color diffuse = (vec3(1, 1, 1) - F) * albedo / PI;
-
-		color specular;
-		auto D = NDFGGX(n, ht, roughness);
-		auto G = GeometrySmith(n, wo, wi, k);
-
-		*/
+		//debug(denom);
+		return  rt * fabs(dot(n, wi));
 	}
 public:
 	color albedo;		//反照率

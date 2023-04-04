@@ -14,13 +14,6 @@
 __constant__ float INF;
 __constant__ float PI;
 
-//__device__ void change(HitRecord& rec, int threadId)
-//{
-//	rec.u = threadId;
-//	printf("ff = %d  %f\n", threadId, rec.u);
-//}
-
-
 __device__ color raycolor(Ray& ray, const color& backGround, const HittableList** scene, Hittable* light, int threadId)
 {
 	//color finalcolor = backGround;
@@ -50,7 +43,6 @@ __device__ color raycolor(Ray& ray, const color& backGround, const HittableList*
 		//printf("rec_address = %p ff = %d matptr = %p u = %lf v = %lf threadId = %d\n", &rec, rec.front_face, rec.mat_ptr, rec.u, rec.v, threadId);
 		//printf("***p = (%lf %lf %lf) t = %lf ff = %d\n", rec.p.x(), rec.p.y(), rec.p.z(), rec.t, rec.front_face);
 
-//debug(rec.front_face);
 		
 		color emitted = rec.mat_ptr->emitted(r, rec, rec.u, rec.v, rec.p);
 		
@@ -60,26 +52,42 @@ __device__ color raycolor(Ray& ray, const color& backGround, const HittableList*
 		}
 
 		
+		//if (srec.is_dielectric)
+		//{
+		//	//n = n + m * emitted;
+		//	//m = m ;
+		//	r = srec.speculer_ray;
+		//	continue;
+		//}
+
+		//pdf* light_pdf = &HittablePDF(light, rec.p);
+		pdf* mtl_pdf = srec.pdf_ptr;
+		//MixPDF p(light_pdf, mtl_pdf);
+		
+		
+		auto scattered = Ray(rec.p, mtl_pdf->generate(srec.curonb, r.randstate()), r.randstate());
+
+		pdfrecord pdfrec;
+		pdfrec.roughness = srec.roughness;
+		pdfrec.n = rec.normal;
+		//pdfrec.h = scattered.direction();//这里存的是micronormal
+
+		auto pdfval = mtl_pdf->value(srec.curonb, scattered.direction(), pdfrec);
+		//auto ndotwi = dot(rec.normal.normalized(), scattered.direction().normalized());
+		
+
+		auto mtlval = rec.mat_ptr->scattering_pdf(r, rec, scattered);
+
 		if (srec.is_dielectric)
 		{
 			//n = n + m * emitted;
 			//m = m ;
-			r = srec.speculer_ray;
+			r = scattered;
 			continue;
 		}
 
-		pdf* light_pdf = &HittablePDF(light, rec.p);
-		pdf* mtl_pdf = srec.pdf_ptr;
-		MixPDF p(light_pdf, mtl_pdf);
-		
-		auto scattered = Ray(rec.p, p.generate(srec.curonb, r.randstate()), r.randstate());
-
-
-		auto pdfval = p.value(srec.curonb, scattered.direction());
-		auto ndotwi = dot(rec.normal.normalized(), scattered.direction().normalized());
-		
 		n = n + m * emitted;
-		m = m * rec.mat_ptr->scattering_pdf(r, rec, scattered) * thrust::max(0.f, ndotwi) / pdfval;
+		m = m * mtlval/ pdfval;//todo 这里的ndotwi需要放scattering_pdf里
 		r = scattered;
 	}
 
@@ -102,7 +110,7 @@ __global__ void render(vec3* fb, HittableList** scene, Camera** camera, int widt
 	curandState currentrs;
 	
 
-	curand_init(19780511, pixel_index, 0, &currentrs);
+	curand_init(20010418, pixel_index, 0, &currentrs);
 	
 	auto lm = new DiffuseLight(color(15, 15, 15));
 	auto light = RectXZ(213, 343, 227, 332, 554, lm);
@@ -118,8 +126,10 @@ __global__ void render(vec3* fb, HittableList** scene, Camera** camera, int widt
 		Ray r = (*camera)->GetRay(u, v, currentrs);
 		//if (pixel_index == 10584)
 		//	printf("idx = %d:%d rdir = (%lf, %lf, %lf) %d\n", pixel_index, i, r.direction().x(), r.direction().y(), r.direction().z(), currentrs.d);
-
-		color cc = raycolor(r, color(0.5, 0.7, 1.0), scene, &light, pixel_index);
+		auto background = color(0.5, 0.7, 1.0);
+		//auto background = color(0.8f, 0.8f, 0.8f);
+		//auto background = color(0.f, 0.f, 0.f);
+		color cc = raycolor(r, background, scene, &light, pixel_index);
 		float max_sample_intensity = 50;
 		cc = vec3(thrust::min(max_sample_intensity, cc[0]), thrust::min(max_sample_intensity, cc[1]), thrust::min(max_sample_intensity, cc[2]));
 		sumcolor += cc;
@@ -139,7 +149,7 @@ __device__ void load_cornell_box(Hittable** objects, HittableList** list, Camera
 	auto gold = new BRDF(color(1, 0.71, 0.29), 0.05, vec3(1, 0.71, 0.29));
 	auto sliver = new BRDF(color(0.91, 0.92, 0.92), 0.1, vec3(0.91, 0.92, 0.92));
 	auto smoothsliver = new BRDF(color(0.91, 0.92, 0.92), 0.005, vec3(0.91, 0.92, 0.92));
-	auto glass = new BTDF(color(0.8, 0.8, 0.8), 0.3, 1.5);
+	auto glass = new BTDF(color(0.8, 0.8, 0.8), 0.002, 1.3f);
 	auto glass1 = new Dielectric(1.4f);
 
 	*objects = new RectYZ(0, 555, 0, 555, 555, green);
@@ -159,9 +169,12 @@ __device__ void load_cornell_box(Hittable** objects, HittableList** list, Camera
 	box2 = new Translate(box2, vec3(130, 0, 65));
 	*(objects + 7) = box2;
 
-	Hittable* sphere1 = new Sphere(point3(0, 0, 0), 75, glass1);
-	sphere1 = new Translate(sphere1, vec3(250, 275, 245));
+	Hittable* sphere1 = new Sphere(point3(250, 275, 245), 75, glass);
+	//sphere1 = new Translate(sphere1, vec3(250, 275, 245));
 	*(objects + 8) = sphere1;
+
+	//Hittable* sphere2 = new Sphere(point3(250, 275, 245), 30, sliver);
+	//*(objects + 9) = sphere2;
 
 	/*Hittable* box3 = new Box(point3(0, 0, 0), point3(75, 75, 75), glass1);
 	box3 = new Translate(box3, vec3(250, 275, 245));
